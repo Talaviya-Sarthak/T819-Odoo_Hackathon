@@ -171,6 +171,7 @@ model Customer {
   quotations      Quotation[]
   subscriptions   Subscription[]
   invoices        Invoice[]
+  negotiations    Negotiation[]
 
   @@index([tierId])
 }
@@ -219,6 +220,7 @@ model Product {
   quotationLines QuotationLine[]
   subscriptionLines SubscriptionLine[]
   recommendations Recommendation[]
+  backorders    Backorder[]
   upsellSourceRules  UpsellRule[] @relation("SourceProduct")
   upsellTargetRules  UpsellRule[] @relation("RecommendedProduct")
 
@@ -238,7 +240,6 @@ model ProductVariant {
   productId String
   product   Product  @relation(fields: [productId], references: [id])
   quotationLines QuotationLine[]
-  subscriptionLines SubscriptionLine[]
 
   @@index([productId])
 }
