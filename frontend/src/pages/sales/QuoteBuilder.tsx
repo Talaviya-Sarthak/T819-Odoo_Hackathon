@@ -67,8 +67,10 @@ export default function QuoteBuilder() {
           customersApi.getAll(),
           productsApi.getAll(),
         ]);
-        setCustomers(custList);
-        setProducts(prodList);
+        const finalCust = Array.isArray(custList) ? custList : (custList as any)?.customers || [];
+        const finalProd = Array.isArray(prodList) ? prodList : (prodList as any)?.products || [];
+        setCustomers(finalCust);
+        setProducts(finalProd);
       } catch (err: any) {
         console.error('Failed to load references:', err);
       }
