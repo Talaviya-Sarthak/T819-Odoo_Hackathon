@@ -94,7 +94,17 @@ app.use('/api', billingRoutes);
 app.use('/api', negotiationsRoutes);
 app.use('/api', recommendationsRoutes);
 app.use('/api', dealHealthRoutes);
-app.use('/api', reportsRoutes);
+// Audit logs endpoint (Admin & Manager)
+const { listAuditLogs } = require('./services/audit.service');
+const { requireRole } = require('./middlewares/role.middleware');
+app.get('/api/audit-logs', authenticate, requireRole(['ADMIN', 'SALES_MANAGER', 'MANAGER_ADMIN']), async (req, res, next) => {
+  try {
+    const logs = await listAuditLogs(req.query);
+    sendSuccess(res, 200, 'Audit logs fetched', { auditLogs: logs });
+  } catch (err) {
+    next(err);
+  }
+});
 
 app.use(errorHandler);
 

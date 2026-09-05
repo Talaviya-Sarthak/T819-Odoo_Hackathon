@@ -1,125 +1,335 @@
 'use strict';
 
-const { PrismaClient } = require('@prisma/client');
 const { AppError } = require('../../utils/errors');
+const { logAudit } = require('../../services/audit.service');
+const prisma = require('../../database/prisma');
 
-const prisma = new PrismaClient();
+const ROLE_STEP_MAP = {
+  1: 'SALES_MANAGER',
+  2: 'FINANCE',
+  3: 'ADMIN',
+};
 
-exports.list = async ({ status }) => {
+exports.list = async ({ user, status, quotationId }) => {
+  // Customers cannot view internal approval queue
+  if (user && user.role === 'CUSTOMER') {
+    throw new AppError('Access denied. Customers cannot access approval queues.', 403);
+  }
+
   const where = {};
   if (status) where.status = status;
+  if (quotationId) where.quotationId = quotationId;
+
+  // If user is SALES_REP (and not manager/admin/finance), only show requests for their own quotations
+  if (user && user.role === 'SALES_REP') {
+    where.quotation = { salesRepId: user.id };
+  } else if (user && user.role === 'FINANCE') {
+    // Finance sees pending requests where requiredRole is FINANCE or all
+    if (!status) {
+      where.OR = [
+        { requiredRole: 'FINANCE' },
+        { status: 'APPROVED' },
+      ];
+    }
+  }
 
   return prisma.approvalRequest.findMany({
     where,
     include: {
-      quotation: { include: { customer: true } },
-      requestedBy: true,
-      assignedTo: true,
+      quotation: {
+        include: {
+          customer: { select: { id: true, name: true, company: true, tier: true } },
+          salesRep: { select: { id: true, name: true, email: true } },
+          lines: {
+            include: {
+              product: { select: { id: true, name: true, sku: true, category: true } },
+            },
+          },
+        },
+      },
+      approver: { select: { id: true, name: true, email: true, role: true } },
+      history: {
+        include: {
+          user: { select: { id: true, name: true, email: true, role: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+      },
     },
     orderBy: { createdAt: 'desc' },
   });
 };
 
-exports.getById = async (id) => {
+exports.getById = async (id, user = null) => {
+  if (user && user.role === 'CUSTOMER') {
+    throw new AppError('Access denied. Customers cannot access internal approval records.', 403);
+  }
+
   const request = await prisma.approvalRequest.findUnique({
     where: { id },
     include: {
-      quotation: { include: { customer: true, salesRep: true, lines: true } },
-      requestedBy: true,
-      assignedTo: true,
-      history: { orderBy: { createdAt: 'desc' } },
+      quotation: {
+        include: {
+          customer: { select: { id: true, name: true, company: true, tier: true } },
+          salesRep: { select: { id: true, name: true, email: true } },
+          lines: {
+            include: {
+              product: { select: { id: true, name: true, sku: true, category: true } },
+            },
+          },
+        },
+      },
+      approver: { select: { id: true, name: true, email: true, role: true } },
+      history: {
+        include: {
+          user: { select: { id: true, name: true, email: true, role: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+      },
     },
   });
+
   if (!request) throw new AppError('Approval request not found', 404);
+
+  // If sales rep, only allowed if quotation belongs to them
+  if (user && user.role === 'SALES_REP' && request.quotation.salesRepId !== user.id) {
+    throw new AppError('Access denied', 403);
+  }
+
   return request;
 };
 
-exports.approve = async (id, userId, comments) => {
-  const request = await prisma.approvalRequest.findUnique({ where: { id } });
-  if (!request) throw new AppError('Approval request not found', 404);
-  if (request.status !== 'PENDING') throw new AppError('Request is not pending', 400);
+exports.approve = async (id, user, comments = '') => {
+  if (!user) throw new AppError('Authentication required', 401);
+  if (user.role === 'CUSTOMER') throw new AppError('Customers cannot approve quotations', 403);
 
-  const [updated] = await prisma.$transaction([
-    prisma.approvalRequest.update({
+  const request = await prisma.approvalRequest.findUnique({
+    where: { id },
+    include: { quotation: true },
+  });
+  if (!request) throw new AppError('Approval request not found', 404);
+  if (request.status !== 'PENDING') throw new AppError(`Approval request is already ${request.status}`, 400);
+
+  // Security Rule: SALES_REP cannot approve their own quotation unless explicitly ADMIN
+  if (request.quotation.salesRepId === user.id && user.role !== 'ADMIN') {
+    throw new AppError('Sales representatives cannot approve their own quotation', 403);
+  }
+
+  // Security Rule: Approver role verification
+  const isAuthorizedRole = user.role === request.requiredRole || user.role === 'ADMIN';
+  if (!isAuthorizedRole) {
+    throw new AppError(`Step ${request.currentStep} requires approval by ${request.requiredRole}`, 403);
+  }
+
+  const isFinalStep = request.currentStep >= request.totalSteps;
+
+  if (!isFinalStep) {
+    // Multi-step chain: advance to next step (e.g. Sales Manager -> Finance)
+    const nextStep = request.currentStep + 1;
+    const nextRole = ROLE_STEP_MAP[nextStep] || 'FINANCE';
+
+    const updated = await prisma.approvalRequest.update({
       where: { id },
       data: {
-        status: 'APPROVED',
-        resolvedAt: new Date(),
-        assignedToId: userId,
+        currentStep: nextStep,
+        requiredRole: nextRole,
+        approverId: user.id,
+        history: {
+          create: {
+            action: `APPROVED_STEP_${request.currentStep}`,
+            step: request.currentStep,
+            notes: comments || `Step ${request.currentStep} approved by ${user.role}. Forwarded to ${nextRole}.`,
+            userId: user.id,
+          },
+        },
       },
-    }),
-    prisma.approvalHistory.create({
-      data: {
-        approvalRequestId: id,
-        action: 'APPROVED',
+      include: {
+        quotation: true,
+        history: true,
+      },
+    });
+
+    await logAudit({
+      userId: user.id,
+      action: 'APPROVAL_STEP_APPROVED',
+      entityType: 'APPROVAL_REQUEST',
+      entityId: id,
+      newValues: {
+        approvedStep: request.currentStep,
+        nextStep,
+        nextRole,
         comments,
       },
-    }),
-    prisma.quotation.update({
-      where: { id: request.quotationId },
-      data: { status: 'APPROVED' },
-    }),
-  ]);
+    });
 
-  return updated;
+    return {
+      status: 'STEP_APPROVED',
+      message: `Step ${request.currentStep} approved. Forwarded to ${nextRole} for final approval.`,
+      approvalRequest: updated,
+    };
+  }
+
+  // Final step completed: mark request APPROVED and quotation APPROVED
+  const updatedRequest = await prisma.approvalRequest.update({
+    where: { id },
+    data: {
+      status: 'APPROVED',
+      approverId: user.id,
+      history: {
+        create: {
+          action: 'APPROVED',
+          step: request.currentStep,
+          notes: comments || 'Final approval granted',
+          userId: user.id,
+        },
+      },
+    },
+    include: { history: true },
+  });
+
+  const updatedQuotation = await prisma.quotation.update({
+    where: { id: request.quotationId },
+    data: { status: 'APPROVED' },
+  });
+
+  await logAudit({
+    userId: user.id,
+    action: 'APPROVAL_COMPLETED',
+    entityType: 'QUOTATION',
+    entityId: request.quotationId,
+    newValues: {
+      status: 'APPROVED',
+      approvalRequestId: id,
+      comments,
+    },
+  });
+
+  return {
+    status: 'APPROVED',
+    message: 'Quotation has been fully approved.',
+    approvalRequest: updatedRequest,
+    quotation: updatedQuotation,
+  };
 };
 
-exports.reject = async (id, userId, comments) => {
-  const request = await prisma.approvalRequest.findUnique({ where: { id } });
+exports.reject = async (id, user, comments = '') => {
+  if (!user) throw new AppError('Authentication required', 401);
+  if (user.role === 'CUSTOMER') throw new AppError('Customers cannot review approval requests', 403);
+
+  const request = await prisma.approvalRequest.findUnique({
+    where: { id },
+    include: { quotation: true },
+  });
   if (!request) throw new AppError('Approval request not found', 404);
-  if (request.status !== 'PENDING') throw new AppError('Request is not pending', 400);
+  if (request.status !== 'PENDING') throw new AppError(`Approval request is already ${request.status}`, 400);
 
-  const [updated] = await prisma.$transaction([
-    prisma.approvalRequest.update({
-      where: { id },
-      data: {
-        status: 'REJECTED',
-        resolvedAt: new Date(),
-        assignedToId: userId,
-      },
-    }),
-    prisma.approvalHistory.create({
-      data: {
-        approvalRequestId: id,
-        action: 'REJECTED',
-        comments,
-      },
-    }),
-    prisma.quotation.update({
-      where: { id: request.quotationId },
-      data: { status: 'REJECTED' },
-    }),
-  ]);
+  // Security Rule: SALES_REP cannot reject/approve their own quotation
+  if (request.quotation.salesRepId === user.id && user.role !== 'ADMIN') {
+    throw new AppError('Sales representatives cannot review their own quotation', 403);
+  }
 
-  return updated;
+  const isAuthorizedRole = user.role === request.requiredRole || user.role === 'ADMIN' || user.role === 'SALES_MANAGER';
+  if (!isAuthorizedRole) {
+    throw new AppError('You do not have permission to reject this quotation', 403);
+  }
+
+  const updatedRequest = await prisma.approvalRequest.update({
+    where: { id },
+    data: {
+      status: 'REJECTED',
+      approverId: user.id,
+      history: {
+        create: {
+          action: 'REJECTED',
+          step: request.currentStep,
+          notes: comments || 'Quotation rejected',
+          userId: user.id,
+        },
+      },
+    },
+    include: { history: true },
+  });
+
+  const updatedQuotation = await prisma.quotation.update({
+    where: { id: request.quotationId },
+    data: { status: 'REJECTED' },
+  });
+
+  await logAudit({
+    userId: user.id,
+    action: 'APPROVAL_REJECTED',
+    entityType: 'QUOTATION',
+    entityId: request.quotationId,
+    newValues: {
+      status: 'REJECTED',
+      comments,
+    },
+  });
+
+  return {
+    status: 'REJECTED',
+    message: 'Quotation has been rejected.',
+    approvalRequest: updatedRequest,
+    quotation: updatedQuotation,
+  };
 };
 
-exports.returnForRevision = async (id, userId, comments) => {
-  const request = await prisma.approvalRequest.findUnique({ where: { id } });
+exports.returnForRevision = async (id, user, comments = '') => {
+  if (!user) throw new AppError('Authentication required', 401);
+  if (user.role === 'CUSTOMER') throw new AppError('Customers cannot review approval requests', 403);
+
+  const request = await prisma.approvalRequest.findUnique({
+    where: { id },
+    include: { quotation: true },
+  });
   if (!request) throw new AppError('Approval request not found', 404);
-  if (request.status !== 'PENDING') throw new AppError('Request is not pending', 400);
+  if (request.status !== 'PENDING') throw new AppError(`Approval request is already ${request.status}`, 400);
 
-  const [updated] = await prisma.$transaction([
-    prisma.approvalRequest.update({
-      where: { id },
-      data: {
-        status: 'RETURNED',
-        resolvedAt: new Date(),
-        assignedToId: userId,
-      },
-    }),
-    prisma.approvalHistory.create({
-      data: {
-        approvalRequestId: id,
-        action: 'RETURNED',
-        comments,
-      },
-    }),
-    prisma.quotation.update({
-      where: { id: request.quotationId },
-      data: { status: 'DRAFT' },
-    }),
-  ]);
+  if (request.quotation.salesRepId === user.id && user.role !== 'ADMIN') {
+    throw new AppError('Sales representatives cannot review their own quotation', 403);
+  }
 
-  return updated;
+  const isAuthorizedRole = user.role === request.requiredRole || user.role === 'ADMIN' || user.role === 'SALES_MANAGER';
+  if (!isAuthorizedRole) {
+    throw new AppError('You do not have permission to return this quotation', 403);
+  }
+
+  const updatedRequest = await prisma.approvalRequest.update({
+    where: { id },
+    data: {
+      status: 'RETURNED',
+      approverId: user.id,
+      history: {
+        create: {
+          action: 'RETURNED',
+          step: request.currentStep,
+          notes: comments || 'Returned for revision',
+          userId: user.id,
+        },
+      },
+    },
+    include: { history: true },
+  });
+
+  const updatedQuotation = await prisma.quotation.update({
+    where: { id: request.quotationId },
+    data: { status: 'DRAFT' },
+  });
+
+  await logAudit({
+    userId: user.id,
+    action: 'APPROVAL_RETURNED',
+    entityType: 'QUOTATION',
+    entityId: request.quotationId,
+    newValues: {
+      status: 'DRAFT',
+      comments,
+    },
+  });
+
+  return {
+    status: 'RETURNED',
+    message: 'Quotation has been returned to draft for revision.',
+    approvalRequest: updatedRequest,
+    quotation: updatedQuotation,
+  };
 };

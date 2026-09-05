@@ -1,289 +1,449 @@
-const { PrismaClient } = require('@prisma/client');
-const bcrypt = require('bcryptjs');
+const path = require('path');
+try {
+  require('dotenv').config({ path: path.join(__dirname, '../backend/.env') });
+} catch (e) {
+  require(path.join(__dirname, '../backend/node_modules/dotenv')).config({ path: path.join(__dirname, '../backend/.env') });
+}
+
+let PrismaClient, Prisma, bcrypt;
+try {
+  ({ PrismaClient, Prisma } = require('@prisma/client'));
+  bcrypt = require('bcryptjs');
+} catch (e) {
+  ({ PrismaClient, Prisma } = require(path.join(__dirname, '../backend/node_modules/@prisma/client')));
+  bcrypt = require(path.join(__dirname, '../backend/node_modules/bcryptjs'));
+}
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Seeding database...');
+  console.log('🌱 Starting database seed for DealFlow360...');
 
-  // ─── Customer Tiers ─────────────────────────────────
+  // ─── 1. Customer Tiers ───────────────────────────────────────
+  console.log('Creating customer tiers...');
   const bronze = await prisma.customerTier.upsert({
-    where: { name: 'Bronze' },
-    update: {},
-    create: { name: 'Bronze', description: 'Entry-level tier', defaultDiscountPercent: 5 },
+    where: { name: 'BRONZE' },
+    update: { discountPct: new Prisma.Decimal(5) },
+    create: {
+      name: 'BRONZE',
+      description: 'Bronze tier customer (up to 5% discount)',
+      discountPct: new Prisma.Decimal(5),
+    },
   });
 
   const silver = await prisma.customerTier.upsert({
-    where: { name: 'Silver' },
-    update: {},
-    create: { name: 'Silver', description: 'Mid-level tier', defaultDiscountPercent: 10 },
+    where: { name: 'SILVER' },
+    update: { discountPct: new Prisma.Decimal(10) },
+    create: {
+      name: 'SILVER',
+      description: 'Silver tier customer (up to 10% discount)',
+      discountPct: new Prisma.Decimal(10),
+    },
   });
 
   const gold = await prisma.customerTier.upsert({
-    where: { name: 'Gold' },
-    update: {},
-    create: { name: 'Gold', description: 'Premium tier', defaultDiscountPercent: 15 },
+    where: { name: 'GOLD' },
+    update: { discountPct: new Prisma.Decimal(15) },
+    create: {
+      name: 'GOLD',
+      description: 'Gold tier customer (up to 15% discount)',
+      discountPct: new Prisma.Decimal(15),
+    },
   });
 
-  // ─── Categories ─────────────────────────────────────
-  const software = await prisma.category.upsert({
-    where: { name: 'Software' },
-    update: {},
-    create: { name: 'Software', description: 'Software licenses and subscriptions' },
-  });
-
+  // ─── 2. Categories ───────────────────────────────────────────
+  console.log('Creating product categories...');
   const hardware = await prisma.category.upsert({
     where: { name: 'Hardware' },
-    update: {},
-    create: { name: 'Hardware', description: 'Physical hardware products' },
+    update: { active: true },
+    create: { name: 'Hardware', description: 'Enterprise hardware, laptops, monitors, peripherals', active: true },
   });
 
   const services = await prisma.category.upsert({
     where: { name: 'Services' },
-    update: {},
-    create: { name: 'Services', description: 'Professional services' },
+    update: { active: true },
+    create: { name: 'Services', description: 'Professional consulting, installation, and deployment services', active: true },
   });
 
-  // ─── Products ───────────────────────────────────────
-  const products = [
+  const software = await prisma.category.upsert({
+    where: { name: 'Software' },
+    update: { active: true },
+    create: { name: 'Software', description: 'Software licenses, security, and cloud backup subscriptions', active: true },
+  });
+
+  const accessories = await prisma.category.upsert({
+    where: { name: 'Accessories' },
+    update: { active: true },
+    create: { name: 'Accessories', description: 'Office ergonomics, bags, cables, and input devices', active: true },
+  });
+
+  // ─── 3. Products (10 items) ───────────────────────────────────
+  console.log('Creating products...');
+  const productList = [
     {
-      sku: 'SW-ENT-001',
-      name: 'Enterprise License',
-      description: 'Annual enterprise software license',
-      categoryId: software.id,
-      basePrice: 12000,
-      costPrice: 3600,
-      taxPercent: 10,
-      productType: 'license',
-    },
-    {
-      sku: 'SW-PRO-001',
-      name: 'Professional License',
-      description: 'Annual professional software license',
-      categoryId: software.id,
-      basePrice: 6000,
-      costPrice: 1800,
-      taxPercent: 10,
-      productType: 'license',
-    },
-    {
-      sku: 'SW-STD-001',
-      name: 'Standard License',
-      description: 'Annual standard software license',
-      categoryId: software.id,
-      basePrice: 2400,
-      costPrice: 720,
-      taxPercent: 10,
-      productType: 'license',
-    },
-    {
-      sku: 'HW-SRV-001',
-      name: 'Dell PowerEdge Server',
-      description: 'Rack-mounted enterprise server',
+      sku: 'HW-LAPTOP-001',
+      name: 'Laptop',
+      description: 'Dell Latitude 15" Core i7 32GB RAM 512GB SSD Enterprise Laptop',
+      unit: 'unit',
+      basePrice: new Prisma.Decimal('1200.00'),
+      costPrice: new Prisma.Decimal('800.00'),
+      taxRate: new Prisma.Decimal('18.00'),
       categoryId: hardware.id,
-      basePrice: 15000,
-      costPrice: 9000,
-      taxPercent: 8,
-      productType: 'physical',
+      active: true,
     },
     {
-      sku: 'HW-UPS-001',
-      name: 'UPS 3000VA',
-      description: 'Uninterruptible Power Supply',
+      sku: 'HW-MONITOR-001',
+      name: 'Monitor',
+      description: '27" 4K IPS Ultra-Slim Business Display',
+      unit: 'unit',
+      basePrice: new Prisma.Decimal('450.00'),
+      costPrice: new Prisma.Decimal('280.00'),
+      taxRate: new Prisma.Decimal('18.00'),
       categoryId: hardware.id,
-      basePrice: 2200,
-      costPrice: 1100,
-      taxPercent: 8,
-      productType: 'physical',
+      active: true,
     },
     {
-      sku: 'SV-IMP-001',
-      name: 'Implementation Service',
-      description: 'Full implementation and deployment',
+      sku: 'AC-KEYBOARD-001',
+      name: 'Keyboard',
+      description: 'Wireless Ergonomic Mechanical Keyboard',
+      unit: 'unit',
+      basePrice: new Prisma.Decimal('80.00'),
+      costPrice: new Prisma.Decimal('35.00'),
+      taxRate: new Prisma.Decimal('18.00'),
+      categoryId: accessories.id,
+      active: true,
+    },
+    {
+      sku: 'AC-MOUSE-001',
+      name: 'Mouse',
+      description: 'Precision Ergonomic Wireless Laser Mouse',
+      unit: 'unit',
+      basePrice: new Prisma.Decimal('45.00'),
+      costPrice: new Prisma.Decimal('18.00'),
+      taxRate: new Prisma.Decimal('18.00'),
+      categoryId: accessories.id,
+      active: true,
+    },
+    {
+      sku: 'HW-DOCK-001',
+      name: 'Docking Station',
+      description: 'Universal Thunderbolt 4 Quad-Display Enterprise Dock',
+      unit: 'unit',
+      basePrice: new Prisma.Decimal('180.00'),
+      costPrice: new Prisma.Decimal('95.00'),
+      taxRate: new Prisma.Decimal('18.00'),
+      categoryId: hardware.id,
+      active: true,
+    },
+    {
+      sku: 'SV-SETUP-001',
+      name: 'Office Setup Service',
+      description: 'Complete on-site deployment, workstation calibration, and network setup',
+      unit: 'service',
+      basePrice: new Prisma.Decimal('500.00'),
+      costPrice: new Prisma.Decimal('250.00'),
+      taxRate: new Prisma.Decimal('18.00'),
       categoryId: services.id,
-      basePrice: 25000,
-      costPrice: 12500,
-      taxPercent: 0,
-      productType: 'service',
+      active: true,
     },
     {
-      sku: 'SV-TRN-001',
-      name: 'Training Package',
-      description: '3-day on-site training',
-      categoryId: services.id,
-      basePrice: 5000,
-      costPrice: 2000,
-      taxPercent: 0,
-      productType: 'service',
-      isSubscription: false,
+      sku: 'SW-BACKUP-001',
+      name: 'Cloud Backup',
+      description: 'Automated 1TB Encrypted Cloud Backup & Disaster Recovery',
+      unit: 'license',
+      basePrice: new Prisma.Decimal('120.00'),
+      costPrice: new Prisma.Decimal('30.00'),
+      taxRate: new Prisma.Decimal('18.00'),
+      categoryId: software.id,
+      active: true,
     },
     {
-      sku: 'SV-SUP-001',
+      sku: 'SV-SUPPORT-001',
       name: 'Premium Support',
-      description: '24/7 priority support subscription',
+      description: '24/7 dedicated enterprise technical support SLA with 1-hr response',
+      unit: 'contract',
+      basePrice: new Prisma.Decimal('1500.00'),
+      costPrice: new Prisma.Decimal('400.00'),
+      taxRate: new Prisma.Decimal('18.00'),
       categoryId: services.id,
-      basePrice: 1800,
-      costPrice: 500,
-      taxPercent: 0,
-      productType: 'service',
-      isSubscription: true,
+      active: true,
+    },
+    {
+      sku: 'SW-SEC-001',
+      name: 'Security Add-on',
+      description: 'Zero-Trust Endpoint Detection & Response (EDR) Suite',
+      unit: 'license',
+      basePrice: new Prisma.Decimal('250.00'),
+      costPrice: new Prisma.Decimal('60.00'),
+      taxRate: new Prisma.Decimal('18.00'),
+      categoryId: software.id,
+      active: true,
+    },
+    {
+      sku: 'AC-BAG-001',
+      name: 'Laptop Bag',
+      description: 'Ballistic Nylon Weatherproof Executive Briefcase & Backpack',
+      unit: 'unit',
+      basePrice: new Prisma.Decimal('65.00'),
+      costPrice: new Prisma.Decimal('25.00'),
+      taxRate: new Prisma.Decimal('18.00'),
+      categoryId: accessories.id,
+      active: true,
     },
   ];
 
-  for (const p of products) {
+  for (const p of productList) {
     await prisma.product.upsert({
       where: { sku: p.sku },
-      update: {},
+      update: p,
       create: p,
     });
   }
 
-  // ─── Warehouses ─────────────────────────────────────
-  await prisma.warehouse.upsert({
-    where: { code: 'WH-NYC' },
-    update: {},
-    create: {
-      name: 'New York Warehouse',
-      code: 'WH-NYC',
-      address: '123 Industrial Ave',
-      city: 'New York',
-      country: 'US',
-      shippingCostWeight: 0.5,
-    },
-  });
-
-  await prisma.warehouse.upsert({
-    where: { code: 'WH-LAX' },
-    update: {},
-    create: {
-      name: 'Los Angeles Warehouse',
-      code: 'WH-LAX',
-      address: '456 Logistics Blvd',
-      city: 'Los Angeles',
-      country: 'US',
-      shippingCostWeight: 0.5,
-    },
-  });
-
-  await prisma.warehouse.upsert({
-    where: { code: 'WH-LON' },
-    update: {},
-    create: {
-      name: 'London Warehouse',
-      code: 'WH-LON',
-      address: '78 Commerce Lane',
-      city: 'London',
-      country: 'UK',
-      shippingCostWeight: 0.75,
-    },
-  });
-
-  // ─── Approval Rules ─────────────────────────────────
-  await prisma.approvalRule.createMany({
-    data: [
-      { name: 'High Value', minAmount: 50000, riskThreshold: 80, requiredLevel: 'SALES_MANAGER' },
-      { name: 'Very High Value', minAmount: 100000, riskThreshold: 60, requiredLevel: 'ADMIN' },
-      { name: 'High Discount', minAmount: 0, riskThreshold: 90, requiredLevel: 'SALES_MANAGER' },
-    ],
-    skipDuplicates: true,
-  });
-
-  // ─── Discount Rules ─────────────────────────────────
-  await prisma.discountRule.createMany({
-    data: [
-      { name: 'Bronze Software Discount', customerTierId: bronze.id, categoryId: software.id, maxDiscountPercent: 10, approvalRequired: false },
-      { name: 'Bronze Hardware Discount', customerTierId: bronze.id, categoryId: hardware.id, maxDiscountPercent: 5, approvalRequired: false },
-      { name: 'Silver Software Discount', customerTierId: silver.id, categoryId: software.id, maxDiscountPercent: 15, approvalRequired: false },
-      { name: 'Silver Hardware Discount', customerTierId: silver.id, categoryId: hardware.id, maxDiscountPercent: 10, approvalRequired: false },
-      { name: 'Gold Software Discount', customerTierId: gold.id, categoryId: software.id, maxDiscountPercent: 25, approvalRequired: true, approvalLevel: 'SALES_MANAGER' },
-      { name: 'Gold Hardware Discount', customerTierId: gold.id, categoryId: hardware.id, maxDiscountPercent: 15, approvalRequired: false },
-    ],
-    skipDuplicates: true,
-  });
-
-  // ─── Subscription Plans ─────────────────────────────
-  await prisma.subscriptionPlan.createMany({
-    data: [
-      { name: 'Monthly Support', billingInterval: 'monthly', price: 150, currency: 'USD', cancellationPolicy: '30 day notice', refundPolicy: 'Pro-rata refund' },
-      { name: 'Annual Support', billingInterval: 'yearly', price: 1500, currency: 'USD', prorationEnabled: true, cancellationPolicy: '60 day notice', refundPolicy: 'Pro-rata refund' },
-    ],
-    skipDuplicates: true,
-  });
-
-  // ─── Upsell Rules ───────────────────────────────────
-  const entLicense = await prisma.product.findUnique({ where: { sku: 'SW-ENT-001' } });
-  const implService = await prisma.product.findUnique({ where: { sku: 'SV-IMP-001' } });
-  const premiumSupport = await prisma.product.findUnique({ where: { sku: 'SV-SUP-001' } });
-
-  if (entLicense && implService) {
-    await prisma.upsellRule.create({
-      data: {
-        sourceProductId: entLicense.id,
-        recommendedProductId: implService.id,
-        ruleType: 'UPSELL',
-        priority: 1,
-        minimumMarginPercent: 20,
-        promotionText: 'Add implementation service for a smooth deployment',
-        isActive: true,
-      },
-    });
-  }
-
-  if (entLicense && premiumSupport) {
-    await prisma.upsellRule.create({
-      data: {
-        sourceProductId: entLicense.id,
-        recommendedProductId: premiumSupport.id,
-        ruleType: 'CROSS_SELL',
-        priority: 2,
-        minimumMarginPercent: 30,
-        promotionText: 'Get 24/7 priority support with your license',
-        isActive: true,
-      },
-    });
-  }
-
-  // ─── Demo Customers ─────────────────────────────────
-  await prisma.customer.createMany({
-    data: [
-      { name: 'Acme Corp', companyName: 'Acme Corporation', email: 'info@acme.com', phone: '+1-555-0101', city: 'New York', country: 'US', tierId: gold.id, currency: 'USD' },
-      { name: 'TechStart Inc', companyName: 'TechStart Inc', email: 'hello@techstart.io', phone: '+1-555-0202', city: 'San Francisco', country: 'US', tierId: silver.id, currency: 'USD' },
-      { name: 'Global Mfg', companyName: 'Global Manufacturing Ltd', email: 'sales@globalmfg.com', phone: '+44-20-7946-0958', city: 'London', country: 'UK', tierId: bronze.id, currency: 'GBP' },
-    ],
-    skipDuplicates: true,
-  });
-
-  // ─── Demo Users ─────────────────────────────────────
-  const hashedPassword = await bcrypt.hash('Demo123!', 10);
+  // ─── 4. Demo Users for all Required Roles ─────────────────────
+  console.log('Creating demo users...');
+  const passwordHash = await bcrypt.hash('demo1234', 12);
 
   const demoUsers = [
     { email: 'admin@dealflow360.com', name: 'Admin User', role: 'ADMIN' },
-    { email: 'sales@dealflow360.com', name: 'Sarah Sales', role: 'SALES_REP' },
-    { email: 'manager@dealflow360.com', name: 'Mike Manager', role: 'SALES_MANAGER' },
+    { email: 'sales@dealflow360.com', name: 'Sarah Sales Rep', role: 'SALES_REP' },
+    { email: 'manager@dealflow360.com', name: 'Mike Sales Manager', role: 'SALES_MANAGER' },
     { email: 'finance@dealflow360.com', name: 'Fiona Finance', role: 'FINANCE' },
-    { email: 'ops@dealflow360.com', name: 'Oscar Ops', role: 'OPERATIONS' },
-    { email: 'customer@dealflow360.com', name: 'Customer User', role: 'CUSTOMER' },
+    { email: 'ops@dealflow360.com', name: 'Oscar Operations', role: 'OPERATIONS' },
+    { email: 'customer@dealflow360.com', name: 'Carl Customer', role: 'CUSTOMER' },
+    // Also support demo domains used in earlier auth tests
+    { email: 'sales@dealflow.demo', name: 'Sales Rep Demo', role: 'SALES_REP' },
+    { email: 'manager@dealflow.demo', name: 'Manager Demo', role: 'SALES_MANAGER' },
+    { email: 'finance@dealflow.demo', name: 'Finance Demo', role: 'FINANCE' },
+    { email: 'ops@dealflow.demo', name: 'Ops Demo', role: 'OPERATIONS' },
+    { email: 'customer@dealflow.demo', name: 'Customer Demo', role: 'CUSTOMER' },
   ];
 
+  const userMap = {};
   for (const u of demoUsers) {
-    await prisma.user.upsert({
+    const user = await prisma.user.upsert({
       where: { email: u.email },
-      update: {},
+      update: {
+        role: u.role,
+        passwordHash,
+        emailVerified: true,
+        status: 'active',
+      },
       create: {
-        ...u,
-        password: hashedPassword,
+        email: u.email,
+        name: u.name,
+        passwordHash,
+        role: u.role,
         emailVerified: true,
         status: 'active',
       },
     });
+    userMap[u.role] = user;
   }
 
-  console.log('Seed completed successfully!');
+  const salesRepUser = userMap['SALES_REP'];
+
+  // ─── 5. Customers (5 items) ───────────────────────────────────
+  console.log('Creating demo customers...');
+  const customerList = [
+    {
+      name: 'Acme Corp',
+      company: 'Acme Corporation',
+      email: 'contact@acme.com',
+      phone: '+1-555-0100',
+      address: '100 Industrial Parkway, Austin, TX',
+      tierId: gold.id,
+      salesRepId: salesRepUser.id,
+      currency: 'USD',
+    },
+    {
+      name: 'TechCorp',
+      company: 'TechCorp Inc',
+      email: 'info@techcorp.com',
+      phone: '+1-555-0200',
+      address: '500 Silicon Way, San Jose, CA',
+      tierId: silver.id,
+      salesRepId: salesRepUser.id,
+      currency: 'USD',
+    },
+    {
+      name: 'GlobalSoft',
+      company: 'GlobalSoft Ltd',
+      email: 'hello@globalsoft.com',
+      phone: '+44-20-7946-0958',
+      address: '25 Finsbury Square, London, UK',
+      tierId: bronze.id,
+      salesRepId: salesRepUser.id,
+      currency: 'USD',
+    },
+    {
+      name: 'StartupXYZ',
+      company: 'StartupXYZ Technologies',
+      email: 'team@startupxyz.com',
+      phone: '+1-555-0300',
+      address: '42 Innovation Hub, Boulder, CO',
+      tierId: bronze.id,
+      salesRepId: salesRepUser.id,
+      currency: 'USD',
+    },
+    {
+      name: 'Enterprise Ltd',
+      company: 'Enterprise Solutions Ltd',
+      email: 'sales@enterprise.com',
+      phone: '+1-555-0400',
+      address: '77 Wall Street, New York, NY',
+      tierId: gold.id,
+      salesRepId: salesRepUser.id,
+      currency: 'USD',
+    },
+  ];
+
+  for (const c of customerList) {
+    const existing = await prisma.customer.findFirst({ where: { name: c.name } });
+    if (existing) {
+      await prisma.customer.update({ where: { id: existing.id }, data: c });
+    } else {
+      await prisma.customer.create({ data: c });
+    }
+  }
+
+  // Link customer demo users to Acme Corp customer record
+  const acme = await prisma.customer.findFirst({ where: { name: 'Acme Corp' } });
+  if (acme) {
+    await prisma.user.updateMany({
+      where: { role: 'CUSTOMER' },
+      data: { customerId: acme.id },
+    });
+  }
+
+  // ─── 6. Warehouses ───────────────────────────────────────────
+  console.log('Creating warehouses...');
+  await prisma.warehouse.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000001' },
+    update: { name: 'Ahmedabad Warehouse', location: 'Ahmedabad, Gujarat, India', active: true },
+    create: {
+      id: '00000000-0000-0000-0000-000000000001',
+      name: 'Ahmedabad Warehouse',
+      location: 'Ahmedabad, Gujarat, India',
+      active: true,
+    },
+  });
+
+  await prisma.warehouse.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000002' },
+    update: { name: 'Vadodara Warehouse', location: 'Vadodara, Gujarat, India', active: true },
+    create: {
+      id: '00000000-0000-0000-0000-000000000002',
+      name: 'Vadodara Warehouse',
+      location: 'Vadodara, Gujarat, India',
+      active: true,
+    },
+  });
+
+  // ─── 7. Subscription Plans ───────────────────────────────────
+  console.log('Creating subscription plans...');
+  const plans = [
+    { id: '10000000-0000-0000-0000-000000000001', name: 'Monthly Support Plan', interval: 'monthly', price: new Prisma.Decimal('150.00'), description: 'Monthly rolling SLA support contract' },
+    { id: '10000000-0000-0000-0000-000000000002', name: 'Quarterly Support Plan', interval: 'quarterly', price: new Prisma.Decimal('420.00'), description: 'Quarterly discounted SLA support contract' },
+    { id: '10000000-0000-0000-0000-000000000003', name: 'Yearly Support Plan', interval: 'yearly', price: new Prisma.Decimal('1500.00'), description: 'Annual enterprise support contract with highest priority SLA' },
+  ];
+
+  for (const pl of plans) {
+    await prisma.subscriptionPlan.upsert({
+      where: { id: pl.id },
+      update: pl,
+      create: pl,
+    });
+  }
+
+  // ─── 8. Discount Rules (Database-Driven) ──────────────────────
+  console.log('Configuring discount governance rules...');
+  await prisma.discountRule.deleteMany({});
+
+  // Tier rules
+  await prisma.discountRule.createMany({
+    data: [
+      {
+        name: 'Bronze Tier Max Discount',
+        type: 'TIER',
+        customerTierId: bronze.id,
+        maxDiscountPct: new Prisma.Decimal('5.00'),
+        active: true,
+      },
+      {
+        name: 'Silver Tier Max Discount',
+        type: 'TIER',
+        customerTierId: silver.id,
+        maxDiscountPct: new Prisma.Decimal('10.00'),
+        active: true,
+      },
+      {
+        name: 'Gold Tier Max Discount',
+        type: 'TIER',
+        customerTierId: gold.id,
+        maxDiscountPct: new Prisma.Decimal('15.00'),
+        active: true,
+      },
+      // Category rules
+      {
+        name: 'Hardware Max Discount',
+        type: 'CATEGORY',
+        categoryId: hardware.id,
+        maxDiscountPct: new Prisma.Decimal('15.00'),
+        active: true,
+      },
+      {
+        name: 'Services Max Discount',
+        type: 'CATEGORY',
+        categoryId: services.id,
+        maxDiscountPct: new Prisma.Decimal('10.00'),
+        active: true,
+      },
+      {
+        name: 'Software Max Discount',
+        type: 'CATEGORY',
+        categoryId: software.id,
+        maxDiscountPct: new Prisma.Decimal('12.00'),
+        active: true,
+      },
+      {
+        name: 'Accessories Max Discount',
+        type: 'CATEGORY',
+        categoryId: accessories.id,
+        maxDiscountPct: new Prisma.Decimal('8.00'),
+        active: true,
+      },
+    ],
+  });
+
+  // ─── 9. Approval Rules ───────────────────────────────────────
+  console.log('Configuring approval rules...');
+  await prisma.approvalRule.deleteMany({});
+  await prisma.approvalRule.createMany({
+    data: [
+      { name: 'Low Risk Approval', minRiskScore: 1, maxRiskScore: 24, requiredRole: 'SALES_MANAGER', stepOrder: 1, active: true },
+      { name: 'Medium Risk Approval', minRiskScore: 25, maxRiskScore: 59, requiredRole: 'SALES_MANAGER', stepOrder: 1, active: true },
+      { name: 'High Risk Step 1 (Sales Manager)', minRiskScore: 60, maxRiskScore: 79, requiredRole: 'SALES_MANAGER', stepOrder: 1, active: true },
+      { name: 'High Risk Step 2 (Finance)', minRiskScore: 60, maxRiskScore: 79, requiredRole: 'FINANCE', stepOrder: 2, active: true },
+      { name: 'Critical Risk Step 1 (Sales Manager)', minRiskScore: 80, maxRiskScore: 100, requiredRole: 'SALES_MANAGER', stepOrder: 1, active: true },
+      { name: 'Critical Risk Step 2 (Finance)', minRiskScore: 80, maxRiskScore: 100, requiredRole: 'FINANCE', stepOrder: 2, active: true },
+      { name: 'Critical Risk Step 3 (Admin)', minRiskScore: 80, maxRiskScore: 100, requiredRole: 'ADMIN', stepOrder: 3, active: true },
+    ],
+  });
+
+  console.log('\n✅ Seed completed successfully!');
+  console.log('\nDemo User Accounts (Password: demo1234):');
+  console.log('  ADMIN:         admin@dealflow360.com');
+  console.log('  SALES_REP:     sales@dealflow360.com');
+  console.log('  SALES_MANAGER: manager@dealflow360.com');
+  console.log('  FINANCE:       finance@dealflow360.com');
+  console.log('  OPERATIONS:    ops@dealflow360.com');
+  console.log('  CUSTOMER:      customer@dealflow360.com');
 }
 
 main()
   .catch((e) => {
-    console.error(e);
+    console.error('Seed error:', e);
     process.exit(1);
   })
   .finally(async () => {
