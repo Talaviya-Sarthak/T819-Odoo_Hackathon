@@ -3,6 +3,8 @@
 const bcrypt = require('bcryptjs');
 const jwtService = require('./jwt/jwt.service');
 const userRepository = require('../../repositories/user.repository');
+const roleRepository = require('../../repositories/role.repository');
+const rbacService = require('../../services/rbac.service');
 const { AppError } = require('../../utils/errors');
 const logger = require('../../utils/logger');
 const otpService = require('./email/otp.service');
@@ -20,23 +22,42 @@ function sanitizeUser(user) {
   };
 }
 
-exports.register = async ({ name, email, password }) => {
+exports.register = async ({ name, email, password, roleId }) => {
   const existing = await userRepository.findByEmail(email);
   if (existing) {
     throw new AppError('Email already registered', 409);
   }
 
+  // Validate role from database - MUST be self-registerable
+  let roleName = 'CUSTOMER';
+  if (roleId) {
+    const role = await rbacService.validateSelfRegisterableRole(roleId);
+    roleName = role.name;
+  }
+
   const skipEmail = process.env.EMAIL_PROVIDER === 'skip';
   if (skipEmail) {
     const passwordHash = await bcrypt.hash(password, 12);
-    const user = await userRepository.create({ name, email, passwordHash, email_verified: true });
+    const user = await userRepository.create({ name, email, passwordHash, email_verified: true, role: roleName });
+
+    // Load full auth context from database
+    const authContext = await rbacService.getUserAuthContext(user.id);
     const accessToken = jwtService.generateAccessToken({ id: user.id, email: user.email, role: user.role });
     const refreshToken = jwtService.generateRefreshToken({ id: user.id });
-    return { accessToken, refreshToken, user: sanitizeUser(user), message: 'Registration successful.' };
+
+    return {
+      accessToken,
+      refreshToken,
+      user: authContext.user,
+      portal: authContext.portal,
+      navigation: authContext.navigation,
+      permissions: authContext.permissions,
+      message: 'Registration successful.'
+    };
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
-  await otpService.storePendingRegistration(email, { name, email, passwordHash });
+  await otpService.storePendingRegistration(email, { name, email, passwordHash, role: roleName });
   await otpService.generateAndSendOtp(email);
 
   return { message: 'Registration successful. Please verify your email.' };
@@ -51,31 +72,52 @@ exports.verifyEmail = async ({ email, otp }) => {
     }
     await otpService.verifyOtp(email, otp);
     await userRepository.update(user.id, { email_verified: true });
+
+    const authContext = await rbacService.getUserAuthContext(user.id);
     const accessToken = jwtService.generateAccessToken({ id: user.id, email: user.email, role: user.role });
     const refreshToken = jwtService.generateRefreshToken({ id: user.id });
-    return { accessToken, refreshToken, user: sanitizeUser(user) };
+
+    return {
+      accessToken,
+      refreshToken,
+      user: authContext.user,
+      portal: authContext.portal,
+      navigation: authContext.navigation,
+      permissions: authContext.permissions,
+    };
   }
 
   await otpService.verifyOtp(email, otp);
+
+  // Use the role from pending registration if available, otherwise default to CUSTOMER
+  const roleName = pending.role || 'CUSTOMER';
 
   const user = await userRepository.create({
     name: pending.name,
     email: pending.email,
     passwordHash: pending.passwordHash,
-    email_verified: true
+    email_verified: true,
+    role: roleName,
   });
 
   otpService.clearPendingRegistration(email);
 
+  const authContext = await rbacService.getUserAuthContext(user.id);
   const accessToken = jwtService.generateAccessToken({ id: user.id, email: user.email, role: user.role });
   const refreshToken = jwtService.generateRefreshToken({ id: user.id });
 
-  return { accessToken, refreshToken, user: sanitizeUser(user) };
+  return {
+    accessToken,
+    refreshToken,
+    user: authContext.user,
+    portal: authContext.portal,
+    navigation: authContext.navigation,
+    permissions: authContext.permissions,
+  };
 };
 
 exports.resendOtp = async ({ email }) => {
   await otpService.resendOtp(email);
-
   return { message: 'OTP resent successfully' };
 };
 
@@ -86,7 +128,6 @@ exports.forgotPassword = async ({ email }) => {
   }
 
   const token = jwtService.generateAccessToken({ id: user.id, purpose: 'password-reset' }, '15m');
-
   await emailService.sendPasswordReset(email, user.name, token);
 
   return { message: 'If the email exists, a reset link has been sent' };
@@ -131,10 +172,20 @@ exports.login = async ({ email, password }) => {
     throw new AppError('Account is deactivated. Contact administrator.', 403);
   }
 
+  // Load full auth context from database (role, permissions, portal, navigation)
+  const authContext = await rbacService.getUserAuthContext(user.id);
+
   const accessToken = jwtService.generateAccessToken({ id: user.id, email: user.email, role: user.role });
   const refreshToken = jwtService.generateRefreshToken({ id: user.id });
 
-  return { accessToken, refreshToken, user: sanitizeUser(user) };
+  return {
+    accessToken,
+    refreshToken,
+    user: authContext.user,
+    portal: authContext.portal,
+    navigation: authContext.navigation,
+    permissions: authContext.permissions,
+  };
 };
 
 exports.refresh = async (refreshToken) => {
@@ -148,17 +199,28 @@ exports.refresh = async (refreshToken) => {
     throw new AppError('User not found', 404);
   }
 
+  // Load full auth context from database
+  const authContext = await rbacService.getUserAuthContext(user.id);
+
   const newAccessToken = jwtService.generateAccessToken({ id: user.id, email: user.email, role: user.role });
   const newRefreshToken = jwtService.generateRefreshToken({ id: user.id });
 
-  return { accessToken: newAccessToken, refreshToken: newRefreshToken };
+  return {
+    accessToken: newAccessToken,
+    refreshToken: newRefreshToken,
+    user: authContext.user,
+    portal: authContext.portal,
+    navigation: authContext.navigation,
+    permissions: authContext.permissions,
+  };
 };
 
 exports.getCurrentUser = async (userId) => {
-  const user = await userRepository.findById(userId);
-  if (!user) {
-    throw new AppError('User not found', 404);
-  }
-
-  return { user: sanitizeUser(user) };
+  const authContext = await rbacService.getUserAuthContext(userId);
+  return {
+    user: authContext.user,
+    portal: authContext.portal,
+    navigation: authContext.navigation,
+    permissions: authContext.permissions,
+  };
 };

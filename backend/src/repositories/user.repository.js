@@ -32,7 +32,7 @@ exports.create = async (data) => {
       data.email_verified || false,
       data.role || 'CUSTOMER',
       data.customer_id || null,
-      data.status || 'active',
+      data.status || data.status || 'active',
     ]
   );
   return result.rows?.[0] || result[0];

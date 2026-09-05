@@ -6,8 +6,6 @@ import Button from '../components/Button';
 import OAuthButton from '../components/OAuthButton';
 import { login } from '../services/auth.api';
 import { useAuth } from '../context/AuthContext';
-import { getPortalPath } from '../config/roles';
-import type { Role } from '../types';
 
 const DEMO_ACCOUNTS = [
   { email: 'sales@dealflow.demo', role: 'SALES_REP', label: 'Sales Rep', color: 'bg-blue-50 border-blue-200 text-blue-800' },
@@ -33,8 +31,9 @@ export default function Login() {
 
     try {
       const data = await login({ email, password });
-      authLogin(data.accessToken, data.refreshToken, data.user);
-      const redirectPath = getPortalPath(data.user.role as Role);
+      authLogin(data.accessToken, data.refreshToken, data.user, data.portal, data.navigation, data.permissions);
+      // Use portal route from backend, fallback to /login
+      const redirectPath = data.portal?.route || '/login';
       navigate(redirectPath, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
@@ -51,8 +50,8 @@ export default function Login() {
 
     try {
       const data = await login({ email: demoEmail, password: 'demo1234' });
-      authLogin(data.accessToken, data.refreshToken, data.user);
-      const redirectPath = getPortalPath(data.user.role as Role);
+      authLogin(data.accessToken, data.refreshToken, data.user, data.portal, data.navigation, data.permissions);
+      const redirectPath = data.portal?.route || '/login';
       navigate(redirectPath, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Demo login failed');

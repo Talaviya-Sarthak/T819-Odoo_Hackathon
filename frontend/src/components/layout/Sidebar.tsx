@@ -1,7 +1,5 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { getNavForRole, ROLE_LABELS } from '../../config/roles';
-import type { Role } from '../../types';
 
 const ICON_MAP: Record<string, string> = {
   dashboard: '📊',
@@ -30,9 +28,7 @@ const ICON_MAP: Record<string, string> = {
 };
 
 export default function Sidebar() {
-  const { user } = useAuth();
-  const role = user?.role as Role;
-  const navItems = getNavForRole(role);
+  const { user, navigation } = useAuth();
 
   return (
     <aside className="flex h-full w-64 flex-col border-r border-gray-200 bg-gray-900">
@@ -40,16 +36,16 @@ export default function Sidebar() {
         <span className="text-lg font-bold text-white">DealFlow360</span>
       </div>
 
-      {role && (
+      {user && (
         <div className="border-b border-gray-700 px-5 py-3">
           <p className="text-xs text-gray-400">Logged in as</p>
-          <p className="text-sm font-medium text-white">{ROLE_LABELS[role]}</p>
+          <p className="text-sm font-medium text-white">{user.role?.replace('_', ' ')}</p>
         </div>
       )}
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         <ul className="space-y-1">
-          {navItems.map((item) => (
+          {navigation.map((item) => (
             <li key={item.path}>
               <NavLink
                 to={item.path}

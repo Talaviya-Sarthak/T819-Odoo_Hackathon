@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getCurrentUser } from '../services/auth.api';
 
 export default function Callback() {
   const [searchParams] = useSearchParams();
@@ -14,7 +15,17 @@ export default function Callback() {
     if (token && refreshToken) {
       localStorage.setItem('accessToken', token);
       localStorage.setItem('refreshToken', refreshToken);
-      window.location.href = '/dashboard';
+
+      // Fetch full user context from backend
+      getCurrentUser()
+        .then(data => {
+          login(token, refreshToken, data.user, data.portal, data.navigation, data.permissions);
+          const redirectPath = data.portal?.route || '/login';
+          navigate(redirectPath, { replace: true });
+        })
+        .catch(() => {
+          navigate('/login', { replace: true });
+        });
     } else {
       navigate('/login');
     }
