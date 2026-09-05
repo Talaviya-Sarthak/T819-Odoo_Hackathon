@@ -1,3 +1,6 @@
+<<<<<<< HEAD
+node_modules/
+=======
 node_modules/
 dist/
 *.log
@@ -7,3 +10,4 @@ dist/
 prisma/.env
 backend/.env
 frontend/.env
+>>>>>>> b6b9edd21ec3fb09f36aaefdf5f4ce6e7df30df4

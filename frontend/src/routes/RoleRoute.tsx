@@ -12,9 +12,8 @@ export default function RoleRoute({ children, allowedRoles }: RoleRouteProps) {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-gray-50">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
-        <span className="text-sm text-gray-500 font-medium">Loading session...</span>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background">
+        <div className="h-7 w-7 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
   }

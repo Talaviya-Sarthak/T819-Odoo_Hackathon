@@ -1,7 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/Toast';
 import { approvalsApi, type PendingApprovalItem } from '../../api';
+import { 
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { 
   CheckCircle2, 
   XCircle, 
@@ -10,10 +21,28 @@ import {
   Clock, 
   User, 
   Building, 
-  ArrowRight,
   RefreshCw,
-  AlertCircle
+  Sparkles,
+  Search,
+  Filter,
+  ArrowRight,
+  TrendingDown,
+  DollarSign,
+  AlertTriangle
 } from 'lucide-react';
+
+const rowVariants: any = {
+  hidden: { opacity: 0, y: 10 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: {
+      delay: i * 0.04,
+      duration: 0.22,
+      ease: "easeOut",
+    },
+  }),
+};
 
 export default function Approvals() {
   const { user } = useAuth();
@@ -24,16 +53,16 @@ export default function Approvals() {
   const [actionModal, setActionModal] = useState<'approve' | 'reject' | 'return' | null>(null);
   const [comment, setComment] = useState('');
   const [processing, setProcessing] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [riskFilter, setRiskFilter] = useState<'ALL' | 'CRITICAL' | 'HIGH' | 'MEDIUM'>('ALL');
 
   const fetchPendingApprovals = async () => {
     setLoading(true);
-    setStatusMessage(null);
     try {
       const data = await approvalsApi.getPending();
       setApprovals(Array.isArray(data) ? data : (data as any)?.approvals || []);
     } catch (err: any) {
-      setStatusMessage({ type: 'error', text: err.message || 'Failed to fetch pending approvals' });
+      toast.fail(err.message || 'Failed to fetch pending approvals');
     } finally {
       setLoading(false);
     }
@@ -43,348 +72,470 @@ export default function Approvals() {
     fetchPendingApprovals();
   }, []);
 
+  const filteredApprovals = useMemo(() => {
+    return approvals.filter((item) => {
+      const q = item.quotation;
+      const qNum = ((q as any)?.quotationNumber || (q as any)?.quotation_number || item.quotationId || '').toLowerCase();
+      const custName = (q?.customer?.name || (q as any)?.customer_name || '').toLowerCase();
+      const matchSearch = searchTerm === '' || qNum.includes(searchTerm.toLowerCase()) || custName.includes(searchTerm.toLowerCase());
+      const matchRisk = riskFilter === 'ALL' || item.riskLevel === riskFilter;
+      return matchSearch && matchRisk;
+    });
+  }, [approvals, searchTerm, riskFilter]);
+
+  const stats = useMemo(() => {
+    const total = approvals.length;
+    const critical = approvals.filter(a => a.riskLevel === 'CRITICAL').length;
+    const high = approvals.filter(a => a.riskLevel === 'HIGH').length;
+    const totalValue = approvals.reduce((sum, a) => sum + Number((a.quotation as any)?.totalAmount || (a.quotation as any)?.grand_total || 0), 0);
+    return { total, critical, high, totalValue };
+  }, [approvals]);
+
   const handleAction = async () => {
     if (!selectedApproval || !actionModal) return;
 
     if ((actionModal === 'reject' || actionModal === 'return') && !comment.trim()) {
-      setStatusMessage({ type: 'error', text: 'Comments are mandatory when rejecting or returning for revision.' });
-      toast('Comments are mandatory for this action', 'warning');
+      toast.warning('Comments are mandatory when rejecting or returning for revision.');
       return;
     }
 
     setProcessing(true);
-    setStatusMessage(null);
 
     try {
       if (actionModal === 'approve') {
         await approvalsApi.approve(selectedApproval.id, comment);
-        toast('Quotation approved successfully!', 'success');
-        setStatusMessage({ type: 'success', text: `Quotation approval step successfully granted.` });
+        toast.success('Quotation approval step successfully granted!');
       } else if (actionModal === 'reject') {
         await approvalsApi.reject(selectedApproval.id, comment);
-        toast('Quotation rejected', 'info');
-        setStatusMessage({ type: 'success', text: `Quotation rejected.` });
+        toast.warning('Quotation has been rejected.');
       } else if (actionModal === 'return') {
         await approvalsApi.returnForRevision(selectedApproval.id, comment);
-        toast('Quotation returned for revision', 'info');
-        setStatusMessage({ type: 'success', text: `Quotation returned to sales rep for revision.` });
+        toast.info('Quotation returned to sales rep for revision.');
       }
 
       setActionModal(null);
       setSelectedApproval(null);
       setComment('');
-      // Authoritative reload
       await fetchPendingApprovals();
     } catch (err: any) {
-      toast(err.message || 'Action failed.', 'error');
-      setStatusMessage({ type: 'error', text: err.message || 'Action failed.' });
+      toast.fail(err.message || 'Action failed.');
     } finally {
       setProcessing(false);
     }
   };
 
   const getRiskBadge = (level: string, score: number) => {
-    let colorClass = 'bg-slate-100 text-slate-800';
-    if (level === 'CRITICAL') colorClass = 'bg-rose-100 text-rose-800 border-rose-200';
-    else if (level === 'HIGH') colorClass = 'bg-amber-100 text-amber-900 border-amber-300';
-    else if (level === 'MEDIUM') colorClass = 'bg-yellow-100 text-yellow-900 border-yellow-200';
-    else if (level === 'LOW') colorClass = 'bg-emerald-100 text-emerald-800 border-emerald-200';
+    if (level === 'CRITICAL') {
+      return (
+        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase bg-rose-500/10 text-rose-400 border border-rose-500/25">
+          <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
+          {level} ({score}/100)
+        </span>
+      );
+    } else if (level === 'HIGH') {
+      return (
+        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase bg-amber-500/10 text-amber-400 border border-amber-500/25">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+          {level} ({score}/100)
+        </span>
+      );
+    } else if (level === 'MEDIUM') {
+      return (
+        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase bg-yellow-500/10 text-yellow-300 border border-yellow-500/25">
+          <span className="h-1.5 w-1.5 rounded-full bg-yellow-400" />
+          {level} ({score}/100)
+        </span>
+      );
+    }
 
     return (
-      <span className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-bold uppercase border ${colorClass}`}>
-        <ShieldAlert className="h-3.5 w-3.5" />
+      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
         {level} ({score}/100)
       </span>
     );
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-6 max-w-7xl mx-auto animate-in fade-in duration-200 pb-12">
+      {/* Header Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border/40 pb-5">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Governance & Approval Queue</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Review, validate, or reject quotation discount and margin exceptions
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Governance & Approval Queue</h1>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary border border-primary/20">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+              Live Queue
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">
+            Validate quotation discount, margin exceptions, and deal commitments
           </p>
         </div>
 
-        <button
+        <Button
+          variant="outline"
+          size="sm"
           onClick={fetchPendingApprovals}
           disabled={loading}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors shadow-xs"
+          className="flex items-center gap-2 border-border/60 bg-card text-foreground hover:bg-white/5 transition-all"
         >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           Refresh Queue
-        </button>
+        </Button>
       </div>
 
-      {statusMessage && (
-        <div
-          className={`flex items-center justify-between rounded-lg p-4 text-sm font-medium ${
-            statusMessage.type === 'success'
-              ? 'border border-emerald-200 bg-emerald-50 text-emerald-800'
-              : 'border border-rose-200 bg-rose-50 text-rose-800'
-          }`}
-        >
-          <span>{statusMessage.text}</span>
-          <button onClick={() => setStatusMessage(null)} className="text-xs font-bold underline">
-            Dismiss
-          </button>
+      {/* Clean Minimal Stats Row */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-xl border border-border/50 bg-card p-4 shadow-xs">
+          <span className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Pending In Queue</span>
+          <div className="mt-1.5 flex items-baseline justify-between">
+            <p className="text-2xl font-bold text-foreground">{stats.total}</p>
+            <span className="text-xs text-muted-foreground font-medium">Deals awaiting sign-off</span>
+          </div>
         </div>
-      )}
+
+        <div className="rounded-xl border border-border/50 bg-card p-4 shadow-xs">
+          <span className="text-[11px] font-semibold tracking-wider text-amber-400 uppercase">High Risk Alerts</span>
+          <div className="mt-1.5 flex items-baseline justify-between">
+            <p className="text-2xl font-bold text-amber-400">{stats.high + stats.critical}</p>
+            <span className="text-xs text-muted-foreground font-medium">{stats.critical} critical urgency</span>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border/50 bg-card p-4 shadow-xs">
+          <span className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Value Under Review</span>
+          <div className="mt-1.5 flex items-baseline justify-between">
+            <p className="text-2xl font-bold text-foreground">
+              ${stats.totalValue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+            </p>
+            <span className="text-xs text-emerald-400 font-medium">Authoritative</span>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border/50 bg-card p-4 shadow-xs">
+          <span className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Workflow Tier</span>
+          <div className="mt-1.5 flex items-baseline justify-between">
+            <p className="text-2xl font-bold text-foreground">{user?.role === 'SALES_MANAGER' ? 'Manager L1' : 'Director L2'}</p>
+            <span className="text-xs text-muted-foreground font-medium">Sign-off Authority</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Filter & Search Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card/60 p-2.5 rounded-xl border border-border/50">
+        <div className="flex items-center gap-1 overflow-x-auto">
+          {(['ALL', 'CRITICAL', 'HIGH', 'MEDIUM'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setRiskFilter(tab)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                riskFilter === tab
+                  ? 'bg-primary text-primary-foreground shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
+              }`}
+            >
+              {tab === 'ALL' ? 'All Risks' : `${tab.charAt(0) + tab.slice(1).toLowerCase()} Risk`}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search quote # or customer..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="h-8 w-60 rounded-lg border border-border/60 bg-background pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none"
+          />
+        </div>
+      </div>
 
       {/* Main Approvals Table */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div className="rounded-xl border border-border/50 bg-card shadow-xs overflow-hidden">
         {loading ? (
-          <div className="flex h-64 items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+          <div className="flex h-64 flex-col items-center justify-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <RefreshCw className="h-5 w-5 animate-spin" />
+            </div>
+            <span className="text-sm font-medium text-foreground">Syncing pending approvals...</span>
           </div>
-        ) : approvals.length === 0 ? (
-          <div className="p-12 text-center text-slate-500">
-            <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-500/60" />
-            <h3 className="mt-3 text-base font-semibold text-slate-900">Approval Queue Clear</h3>
-            <p className="mt-1 text-sm text-slate-400">All submitted quotations have been reviewed and processed.</p>
+        ) : filteredApprovals.length === 0 ? (
+          <div className="p-12 text-center text-muted-foreground">
+            <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-400/80 mb-2" />
+            <h3 className="text-base font-semibold text-foreground">Approval Queue Clear</h3>
+            <p className="mt-1 text-xs text-muted-foreground">All submitted exceptions have been reviewed and resolved.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-600">
-              <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500 border-b border-slate-200">
-                <tr>
-                  <th className="px-6 py-3.5">Quote #</th>
-                  <th className="px-6 py-3.5">Customer & Tier</th>
-                  <th className="px-6 py-3.5">Requested By</th>
-                  <th className="px-6 py-3.5">Quote Amount</th>
-                  <th className="px-6 py-3.5">Risk & Score</th>
-                  <th className="px-6 py-3.5">Approval Stage</th>
-                  <th className="px-6 py-3.5 text-right">Review</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {approvals.map((item) => {
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent border-b border-border/50 bg-muted/30">
+                  <TableHead className="font-semibold text-xs uppercase tracking-wider text-muted-foreground px-6 py-3.5">Quote #</TableHead>
+                  <TableHead className="font-semibold text-xs uppercase tracking-wider text-muted-foreground px-6 py-3.5">Customer</TableHead>
+                  <TableHead className="font-semibold text-xs uppercase tracking-wider text-muted-foreground px-6 py-3.5">Requested By</TableHead>
+                  <TableHead className="font-semibold text-xs uppercase tracking-wider text-muted-foreground px-6 py-3.5">Quote Amount</TableHead>
+                  <TableHead className="font-semibold text-xs uppercase tracking-wider text-muted-foreground px-6 py-3.5">Risk & Score</TableHead>
+                  <TableHead className="font-semibold text-xs uppercase tracking-wider text-muted-foreground px-6 py-3.5">Approval Stage</TableHead>
+                  <TableHead className="font-semibold text-xs uppercase tracking-wider text-muted-foreground px-6 py-3.5 text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={i} className="border-b border-border/40">
+                      <TableCell className="px-6 py-4"><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell className="px-6 py-4">
+                        <div className="space-y-1.5">
+                          <Skeleton className="h-4 w-36" />
+                          <Skeleton className="h-3 w-20" />
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-6 py-4"><Skeleton className="h-4 w-28" /></TableCell>
+                      <TableCell className="px-6 py-4"><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell className="px-6 py-4"><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
+                      <TableCell className="px-6 py-4"><Skeleton className="h-6 w-32 rounded-full" /></TableCell>
+                      <TableCell className="px-6 py-4 text-right"><Skeleton className="h-8 w-24 ml-auto rounded-md" /></TableCell>
+                    </TableRow>
+                  ))
+                ) : filteredApprovals.map((item, idx) => {
                   const q = item.quotation;
                   const qNum = (q as any)?.quotationNumber || (q as any)?.quotation_number || `QT-${item.quotationId.slice(0, 6)}`;
                   const custName = q?.customer?.name || (q as any)?.customer_name || 'Customer';
-                  const custTier = q?.customer?.tier?.name || 'Standard';
+                  const custTier = q?.customer?.tier?.name || (q as any)?.customer?.tier || 'Standard';
                   const repName = q?.salesRep?.name || (q as any)?.salesRep?.email || 'Sales Rep';
                   const amount = Number((q as any)?.totalAmount || (q as any)?.grand_total || 0);
 
                   return (
-                    <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-6 py-4 font-bold text-indigo-900">{qNum}</td>
-                      <td className="px-6 py-4">
-                        <div className="font-semibold text-slate-900">{custName}</div>
-                        <span className="inline-block rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 mt-0.5">
+                    <motion.tr
+                      key={item.id}
+                      custom={idx}
+                      initial="hidden"
+                      animate="visible"
+                      variants={rowVariants}
+                      className="border-b border-border/40 hover:bg-white/[0.02] transition-colors"
+                    >
+                      <TableCell className="px-6 py-4 font-mono font-bold text-foreground">
+                        {qNum}
+                      </TableCell>
+                      <TableCell className="px-6 py-4">
+                        <div className="font-medium text-foreground">{custName}</div>
+                        <span className="inline-block text-[11px] font-medium text-muted-foreground mt-0.5">
                           {custTier} Tier
                         </span>
-                      </td>
-                      <td className="px-6 py-4 text-slate-700">{repName}</td>
-                      <td className="px-6 py-4 font-bold text-slate-900">${amount.toFixed(2)}</td>
-                      <td className="px-6 py-4">{getRiskBadge(item.riskLevel, item.riskScore)}</td>
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 border border-indigo-200">
+                      </TableCell>
+                      <TableCell className="px-6 py-4 text-muted-foreground text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5 text-muted-foreground/60" />
+                          <span>{repName}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-6 py-4 font-bold text-foreground text-sm">
+                        ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell className="px-6 py-4">
+                        {getRiskBadge(item.riskLevel, item.riskScore)}
+                      </TableCell>
+                      <TableCell className="px-6 py-4">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary border border-primary/20">
                           Step {item.currentStep} of {item.totalSteps}: {item.requiredRole}
                         </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
+                      </TableCell>
+                      <TableCell className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <button
+                          <Button
+                            variant="outline"
+                            size="sm"
                             onClick={() => setSelectedApproval(item)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                            className="h-8 px-3 text-xs font-semibold border-border/60 hover:bg-white/5"
                           >
                             Review
-                          </button>
-                          <button
+                          </Button>
+                          <Button
+                            size="sm"
                             onClick={async () => {
                               try {
                                 await approvalsApi.approve(item.id, 'Approved via quick action');
-                                toast('Quotation approved successfully!', 'success');
+                                toast.success('Quotation approved successfully!');
                                 fetchPendingApprovals();
                               } catch (err: any) {
-                                toast(err.message || 'Approval failed', 'error');
+                                toast.fail(err.message || 'Approval failed');
                               }
                             }}
-                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700 transition-colors"
+                            className="h-8 px-3 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5"
                           >
                             <CheckCircle2 className="h-3.5 w-3.5" /> Approve
-                          </button>
+                          </Button>
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </motion.tr>
                   );
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
       </div>
 
-      {/* Detail & Action Modal */}
+      {/* Clean Minimal Detail Review Modal */}
       {selectedApproval && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs overflow-y-auto">
-          <div className="relative w-full max-w-3xl rounded-2xl bg-white p-6 shadow-2xl space-y-6 my-8">
-            {/* Modal Header */}
-            <div className="flex items-start justify-between border-b border-slate-200 pb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="relative w-full max-w-3xl rounded-2xl border border-border/60 bg-card p-6 shadow-2xl space-y-6 my-8 text-foreground animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="flex items-start justify-between border-b border-border/40 pb-4">
               <div>
-                <h2 className="text-xl font-bold text-slate-900">
-                  Quotation Approval Request: {(selectedApproval.quotation as any)?.quotationNumber || `QT-${selectedApproval.quotationId.slice(0, 6)}`}
-                </h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  Step {selectedApproval.currentStep} of {selectedApproval.totalSteps} • Target Role: <strong>{selectedApproval.requiredRole}</strong>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-bold tracking-tight text-foreground">
+                    Quotation Review: {(selectedApproval.quotation as any)?.quotationNumber || selectedApproval.quotationId.slice(0, 8)}
+                  </h2>
+                  {getRiskBadge(selectedApproval.riskLevel, selectedApproval.riskScore)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Customer: {selectedApproval.quotation?.customer?.name} • Stage {selectedApproval.currentStep} of {selectedApproval.totalSteps}
                 </p>
               </div>
 
               <button
-                onClick={() => setSelectedApproval(null)}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                onClick={() => {
+                  setSelectedApproval(null);
+                  setActionModal(null);
+                }}
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-white/10 hover:text-foreground transition-colors"
               >
                 ✕
               </button>
             </div>
 
-            {/* In-Modal Alert Message */}
-            {statusMessage && (
-              <div
-                className={`flex items-center justify-between rounded-lg p-3 text-xs font-semibold ${
-                  statusMessage.type === 'success'
-                    ? 'border border-emerald-200 bg-emerald-50 text-emerald-800'
-                    : 'border border-rose-200 bg-rose-50 text-rose-800'
-                }`}
-              >
-                <span>{statusMessage.text}</span>
-                <button onClick={() => setStatusMessage(null)} className="underline font-bold">Dismiss</button>
+            {/* Financial Summary Strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-muted/20 p-4 rounded-xl border border-border/40 text-center">
+              <div>
+                <span className="text-[10px] uppercase font-semibold text-muted-foreground">Quote Total</span>
+                <p className="text-base font-bold text-foreground mt-0.5">
+                  ${Number((selectedApproval.quotation as any)?.totalAmount || (selectedApproval.quotation as any)?.grand_total || 0).toFixed(2)}
+                </p>
               </div>
-            )}
-
-            {/* Risk & Reason Header */}
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase text-amber-900">Exception Trigger Reason:</span>
-                {getRiskBadge(selectedApproval.riskLevel, selectedApproval.riskScore)}
+              <div>
+                <span className="text-[10px] uppercase font-semibold text-muted-foreground">Total Discount</span>
+                <p className="text-base font-bold text-rose-400 mt-0.5">
+                  -${Number((selectedApproval.quotation as any)?.discountAmount || (selectedApproval.quotation as any)?.discount_total || 0).toFixed(2)}
+                </p>
               </div>
-              <p className="mt-1.5 text-sm font-semibold text-amber-950">{selectedApproval.reason}</p>
+              <div>
+                <span className="text-[10px] uppercase font-semibold text-muted-foreground">Gross Margin</span>
+                <p className="text-base font-bold text-emerald-400 mt-0.5">
+                  {Number((selectedApproval.quotation as any)?.marginPercentage || 25).toFixed(1)}%
+                </p>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-semibold text-muted-foreground">Required Authority</span>
+                <p className="text-sm font-bold text-primary mt-0.5">{selectedApproval.requiredRole}</p>
+              </div>
             </div>
 
             {/* Line Items Breakdown */}
             <div>
-              <h3 className="text-sm font-bold text-slate-900 mb-2">Quotation Line Items</h3>
-              <div className="rounded-lg border border-slate-200 overflow-hidden">
-                <table className="w-full text-left text-xs text-slate-600">
-                  <thead className="bg-slate-50 font-semibold uppercase text-slate-500 border-b border-slate-200">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Quotation Line Items</h3>
+              <div className="rounded-lg border border-border/50 overflow-hidden">
+                <table className="w-full text-left text-xs text-foreground">
+                  <thead className="bg-muted/30 font-semibold uppercase text-muted-foreground border-b border-border/50">
                     <tr>
-                      <th className="px-4 py-2.5">Item</th>
+                      <th className="px-4 py-2.5">Product</th>
                       <th className="px-3 py-2.5">Qty</th>
                       <th className="px-3 py-2.5">Unit Price</th>
                       <th className="px-3 py-2.5">Discount %</th>
                       <th className="px-4 py-2.5 text-right">Line Total</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {selectedApproval.quotation.lines?.map((line: any, idx: number) => (
-                      <tr key={idx}>
-                        <td className="px-4 py-2.5 font-medium text-slate-900">
-                          {line.product?.name || line.product_name || `Product ID: ${(line.productId || line.product_id || '').slice(0, 8)}`}
-                        </td>
-                        <td className="px-3 py-2.5">{line.quantity}</td>
-                        <td className="px-3 py-2.5">${Number(line.unitPrice || line.unit_price || 0).toFixed(2)}</td>
-                        <td className="px-3 py-2.5">
-                          <span className={`font-bold ${Number(line.discountPercent || line.discount_percent || 0) > 15 ? 'text-rose-600' : 'text-slate-900'}`}>
-                            {Number(line.discountPercent || line.discount_percent || 0)}%
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 text-right font-bold text-slate-900">
-                          ${Number(line.lineTotal || line.line_total || line.total || 0).toFixed(2)}
-                        </td>
-                      </tr>
-                    ))}
+                  <tbody className="divide-y divide-border/40">
+                    {((selectedApproval.quotation as any)?.lines || []).map((line: any, idx: number) => {
+                      const prodName = line.product?.name || line.product_name || `Line #${idx + 1}`;
+                      const unitPrice = Number(line.unitPrice || line.unit_price || 0);
+                      const disc = Number(line.discountPercent || line.discount_percent || 0);
+                      const total = Number(line.lineTotal || line.line_total || (unitPrice * line.quantity * (1 - disc / 100)));
+
+                      return (
+                        <tr key={idx} className="hover:bg-white/[0.02]">
+                          <td className="px-4 py-2.5 font-medium text-foreground">{prodName}</td>
+                          <td className="px-3 py-2.5 text-muted-foreground">{line.quantity}</td>
+                          <td className="px-3 py-2.5">${unitPrice.toFixed(2)}</td>
+                          <td className="px-3 py-2.5 font-semibold text-amber-400">{disc}%</td>
+                          <td className="px-4 py-2.5 text-right font-bold text-foreground">${total.toFixed(2)}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </div>
 
-            {/* Financial Summary */}
-            <div className="flex justify-between border-t border-slate-200 pt-3 text-sm">
-              <span className="text-slate-500 font-medium">Grand Total Value:</span>
-              <span className="text-lg font-bold text-indigo-700">
-                ${Number((selectedApproval.quotation as any)?.totalAmount || (selectedApproval.quotation as any)?.grand_total || 0).toFixed(2)}
-              </span>
+            {/* Reason or Comments Box */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Governance Notes & Justification (Required for Reject / Return)
+              </label>
+              <textarea
+                rows={3}
+                placeholder="Enter review notes, approval stipulations, or revision requirements..."
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                className="w-full rounded-lg border border-border/60 bg-background p-3 text-xs text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
+              />
             </div>
 
-            {/* Action Selection Prompt */}
-            {!actionModal ? (
-              <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-4">
-                <button
-                  onClick={() => setActionModal('return')}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100 transition-colors"
-                >
-                  <RotateCcw className="h-4 w-4" />
-                  Return for Revision
-                </button>
-                <button
-                  onClick={() => setActionModal('reject')}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-900 hover:bg-rose-100 transition-colors"
-                >
-                  <XCircle className="h-4 w-4" />
-                  Reject Quotation
-                </button>
-                <button
-                  onClick={() => setActionModal('approve')}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 transition-colors"
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  Approve Quotation
-                </button>
-              </div>
-            ) : (
-              /* Confirmation Box with Comments */
-              <div className="border-t border-slate-200 pt-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold capitalize text-slate-900">
-                    Confirm {actionModal} Action
-                  </span>
-                  <button
-                    onClick={() => setActionModal(null)}
-                    className="text-xs font-semibold text-slate-500 hover:underline"
-                  >
-                    Cancel
-                  </button>
-                </div>
+            {/* Action Buttons */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/40 pt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSelectedApproval(null);
+                  setActionModal(null);
+                }}
+              >
+                Cancel
+              </Button>
 
-                <textarea
-                  rows={3}
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  placeholder={
-                    actionModal === 'approve'
-                      ? 'Optional manager approval comments...'
-                      : 'Provide mandatory reasons / feedback for this decision...'
-                  }
-                  className="w-full rounded-lg border border-slate-300 p-2.5 text-sm text-slate-900 focus:border-indigo-600 focus:outline-none"
-                />
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={processing}
+                  onClick={() => {
+                    setActionModal('return');
+                    handleAction();
+                  }}
+                  className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 mr-1.5" /> Return for Revision
+                </Button>
 
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => setActionModal(null)}
-                    className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    Back
-                  </button>
-                  <button
-                    onClick={handleAction}
-                    disabled={processing}
-                    className={`inline-flex items-center gap-2 rounded-lg px-5 py-2 text-xs font-bold text-white shadow-xs transition-colors disabled:opacity-50 ${
-                      actionModal === 'approve'
-                        ? 'bg-emerald-600 hover:bg-emerald-700'
-                        : actionModal === 'reject'
-                        ? 'bg-rose-600 hover:bg-rose-700'
-                        : 'bg-amber-600 hover:bg-amber-700'
-                    }`}
-                  >
-                    {processing ? 'Processing...' : `Confirm ${actionModal.toUpperCase()}`}
-                  </button>
-                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={processing}
+                  onClick={() => {
+                    setActionModal('reject');
+                    handleAction();
+                  }}
+                  className="border-rose-500/30 text-rose-400 hover:bg-rose-500/10"
+                >
+                  <XCircle className="w-3.5 h-3.5 mr-1.5" /> Reject
+                </Button>
+
+                <Button
+                  size="sm"
+                  disabled={processing}
+                  onClick={() => {
+                    setActionModal('approve');
+                    handleAction();
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Confirm Approval
+                </Button>
               </div>
-            )}
+            </div>
           </div>
         </div>
       )}

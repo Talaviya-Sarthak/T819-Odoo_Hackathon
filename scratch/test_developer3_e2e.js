@@ -64,7 +64,11 @@ async function runE2ETest() {
         where: { warehouseId_productId: { warehouseId: amdWarehouse.id, productId: laptopProduct.id } },
       });
     }
+<<<<<<< HEAD
+    console.log(`Initial Ahmedabad Laptop Stock: On-Hand=${laptopStock.quantity}, Reserved=${laptopStock.reservedQty}`);
+=======
     console.log(`✓ Initial Ahmedabad Laptop Stock: On-Hand=${laptopStock.quantity}, Reserved=${laptopStock.reservedQty}`);
+>>>>>>> b6b9edd21ec3fb09f36aaefdf5f4ce6e7df30df4
 
     // 2. Create a test Quotation in CUSTOMER_CONFIRMED status
     const salesRep = await prisma.user.findFirst({ where: { role: 'SALES_REP' } }) || await prisma.user.findFirst();

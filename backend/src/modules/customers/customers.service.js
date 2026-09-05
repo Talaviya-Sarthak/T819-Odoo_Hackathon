@@ -1,97 +1,66 @@
 'use strict';
 
+const { PrismaClient } = require('@prisma/client');
 const { AppError } = require('../../utils/errors');
+<<<<<<< Updated upstream
+
+const prisma = new PrismaClient();
+=======
 const { logAudit } = require('../../services/audit.service');
+const { generateKey, cache } = require('../../cache');
 const prisma = require('../../database/prisma');
+
+const CUSTOMERS_LIST_TTL = 60; // 1 minute
 
 exports.list = async ({ user, tierId, search, limit = 50, offset = 0 } = {}) => {
   const conditions = [];
+>>>>>>> Stashed changes
 
-  // Customer role can ONLY view their own customer record
-  if (user && user.role === 'CUSTOMER') {
-    if (user.customer_id) {
-      conditions.push({ id: user.customer_id });
-    } else {
-      const cust = await prisma.customer.findFirst({
-        where: { OR: [{ email: user.email }, { ownerId: user.id }] },
-      });
-      if (cust) conditions.push({ id: cust.id });
-      else return [];
-    }
-  } else if (user && user.role === 'SALES_REP') {
-    // Sales rep sees assigned customers or unassigned
-    conditions.push({
-      OR: [
-        { salesRepId: user.id },
-        { ownerId: user.id },
-        { salesRepId: null },
-      ],
-    });
+exports.list = async ({ tierId }) => {
+  const where = {};
+  if (tierId) where.tierId = tierId;
+
+  const cacheKey = generateKey(
+    'customers:list',
+    user?.id,
+    user?.role,
+    tierId,
+    search,
+    limit,
+    offset
+  );
+
+  // Check cache first
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    return cached;
   }
 
-  if (tierId) conditions.push({ tierId });
-  if (search) {
-    conditions.push({
-      OR: [
-        { name: { contains: search, mode: 'insensitive' } },
-        { company: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-      ],
-    });
-  }
-
-  const where = conditions.length > 0 ? { AND: conditions } : {};
-
-  return prisma.customer.findMany({
+  const result = await prisma.customer.findMany({
     where,
-    include: {
-      tier: true,
-      salesRep: { select: { id: true, name: true, email: true } },
-    },
+    include: { tier: true },
     orderBy: { createdAt: 'desc' },
-    take: Number(limit),
-    skip: Number(offset),
   });
+
+  // Store in cache with 1-minute TTL (customers change, but list is read frequently)
+  cache.set(cacheKey, result, CUSTOMERS_LIST_TTL);
+
+  return result;
 };
 
-exports.getById = async (id, user = null) => {
+exports.getById = async (id) => {
   const customer = await prisma.customer.findUnique({
     where: { id },
-    include: {
-      tier: true,
-      salesRep: { select: { id: true, name: true, email: true } },
-      quotations: {
-        select: { id: true, quotationNumber: true, status: true, totalAmount: true, createdAt: true },
-        take: 10,
-        orderBy: { createdAt: 'desc' },
-      },
-    },
+    include: { tier: true },
   });
-
   if (!customer) throw new AppError('Customer not found', 404);
-
-  // Security Check: Customer isolation
-  if (user && user.role === 'CUSTOMER') {
-    const isOwnCustomer = customer.id === user.customer_id || 
-      (customer.email && customer.email.toLowerCase() === user.email.toLowerCase()) ||
-      customer.ownerId === user.id;
-
-    if (!isOwnCustomer) {
-      throw new AppError('Access denied. You can only access your own customer record.', 403);
-    }
-  }
-
-  // Security Check: Sales rep isolation
-  if (user && user.role === 'SALES_REP') {
-    const isAssigned = customer.salesRepId === user.id || customer.ownerId === user.id;
-    if (!isAssigned) {
-      throw new AppError('Access denied. Customer is not assigned to you.', 403);
-    }
-  }
-
   return customer;
 };
 
+<<<<<<< Updated upstream
+exports.create = async (data) => {
+  return prisma.customer.create({ data, include: { tier: true } });
+=======
 exports.create = async (data, user = null) => {
   if (!data.name) throw new AppError('Customer name is required', 400);
 
@@ -119,6 +88,13 @@ exports.create = async (data, user = null) => {
     },
   });
 
+  // Invalidate customers list cache
+  try {
+    cache.delete('customers:list');
+  } catch (e) {
+    // Cache deletion failure should not break the operation
+  }
+
   await logAudit({
     userId: user?.id,
     action: 'CUSTOMER_CREATE',
@@ -128,11 +104,15 @@ exports.create = async (data, user = null) => {
   });
 
   return customer;
+>>>>>>> Stashed changes
 };
 
-exports.update = async (id, data, user = null) => {
+exports.update = async (id, data) => {
   const existing = await prisma.customer.findUnique({ where: { id } });
   if (!existing) throw new AppError('Customer not found', 404);
+<<<<<<< Updated upstream
+  return prisma.customer.update({ where: { id }, data, include: { tier: true } });
+=======
 
   // Authorization checks
   if (user && user.role === 'CUSTOMER') {
@@ -171,6 +151,13 @@ exports.update = async (id, data, user = null) => {
     },
   });
 
+  // Invalidate customers list cache
+  try {
+    cache.delete('customers:list');
+  } catch (e) {
+    // Cache deletion failure should not break the operation
+  }
+
   await logAudit({
     userId: user?.id,
     action: 'CUSTOMER_UPDATE',
@@ -187,4 +174,5 @@ exports.listTiers = async () => {
   return prisma.customerTier.findMany({
     orderBy: { discountPct: 'asc' },
   });
+>>>>>>> Stashed changes
 };

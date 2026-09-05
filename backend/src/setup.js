@@ -45,12 +45,7 @@ CREATE INDEX IF NOT EXISTS idx_oauth_accounts_provider ON oauth_accounts(provide
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 `;
 
-const DEMO_USERS = [
-  { email: 'sales@dealflow.demo', name: 'Sales Rep Demo', role: 'SALES_REP', customer_id: null },
-  { email: 'manager@dealflow.demo', name: 'Manager Admin Demo', role: 'MANAGER_ADMIN', customer_id: null },
-  { email: 'ops@dealflow.demo', name: 'Ops Finance Demo', role: 'OPS_FINANCE', customer_id: null },
-  { email: 'customer@dealflow.demo', name: 'Customer Demo', role: 'CUSTOMER', customer_id: 'CUST-001' },
-];
+const DEMO_USERS = [];
 
 async function setup() {
   console.log('Connecting to database...');
