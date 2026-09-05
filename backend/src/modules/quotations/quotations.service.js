@@ -2,8 +2,6 @@
 
 const { PrismaClient } = require('@prisma/client');
 const { AppError } = require('../../utils/errors');
-<<<<<<< Updated upstream
-=======
 const { calculateQuotation } = require('../../services/calculation.service');
 const { getEffectiveProductPrice } = require('../../services/pricing.service');
 const { checkQuotationDiscounts } = require('../../services/discount-governance.service');
@@ -11,15 +9,25 @@ const { validateTransition, assertEditable } = require('../../services/quotation
 const { logAudit } = require('../../services/audit.service');
 const { generateKey, cache } = require('../../cache');
 const prisma = require('../../database/prisma');
->>>>>>> Stashed changes
 
-const prisma = new PrismaClient();
-
-exports.list = async ({ status, customerId, salesRepId }) => {
+exports.list = async ({ user, status, customerId, salesRepId, limit = 50, offset = 0 } = {}) => {
   const where = {};
   if (status) where.status = status;
   if (customerId) where.customerId = customerId;
   if (salesRepId) where.salesRepId = salesRepId;
+
+  if (user && user.role === 'CUSTOMER') {
+    const custId = user.customerId || user.customer_id;
+    if (custId) {
+      where.customerId = custId;
+    } else {
+      where.customer = { OR: [{ email: user.email }, { ownerId: user.id }] };
+    }
+  }
+
+  if (user && user.role === 'SALES_REP') {
+    where.salesRepId = user.id;
+  }
 
   const cacheKey = generateKey(
     'quotation:list',
@@ -40,8 +48,14 @@ exports.list = async ({ status, customerId, salesRepId }) => {
 
   const result = await prisma.quotation.findMany({
     where,
-    include: { customer: true, salesRep: true },
+    include: {
+      customer: { include: { tier: true } },
+      salesRep: { select: { id: true, name: true, email: true } },
+      lines: { include: { product: true } },
+    },
     orderBy: { createdAt: 'desc' },
+    take: Number(limit) || 50,
+    skip: Number(offset) || 0,
   });
 
   // Store in cache with 30-second TTL for quotation lists
@@ -50,12 +64,10 @@ exports.list = async ({ status, customerId, salesRepId }) => {
   return result;
 };
 
-exports.getById = async (id) => {
+exports.getById = async (id, user = null) => {
   const quotation = await prisma.quotation.findUnique({
     where: { id },
     include: {
-<<<<<<< Updated upstream
-=======
       customer: { include: { tier: true } },
       salesRep: { select: { id: true, name: true, email: true, role: true } },
       lines: {
@@ -82,7 +94,7 @@ exports.getById = async (id) => {
   // Security: Customer cannot access other customer's quotation
   if (user && user.role === 'CUSTOMER') {
     const custId = user.customerId || user.customer_id;
-    const isOwnCustomer = custId === quotation.customerId || 
+    const isOwnCustomer = (custId && custId === quotation.customerId) || 
       (quotation.customer?.email && quotation.customer.email.toLowerCase() === user.email.toLowerCase()) ||
       quotation.customer?.ownerId === user.id;
 
@@ -236,7 +248,7 @@ exports.update = async (id, data, user = null) => {
 
   // Security: Customer cannot update others' quotations
   if (user && user.role === 'CUSTOMER') {
-    const isOwnCustomer = user.customer_id === existing.customerId || 
+    const isOwnCustomer = (user.customerId || user.customer_id) === existing.customerId || 
       existing.customer?.email?.toLowerCase() === user.email.toLowerCase();
     if (!isOwnCustomer) throw new AppError('Access denied', 403);
   }
@@ -377,7 +389,7 @@ exports.submit = async (id, user = null) => {
 
   // Validate state transition
   if (quotation.status !== 'DRAFT' && quotation.status !== 'NEGOTIATION' && quotation.status !== 'RETURNED') {
-    throw new AppError(`Cannot submit quotation from '${quotation.status}' status. Must be DRAFT or NEGOTIATION.`, 400);
+    throw new AppError(`Cannot submit quotation from '${quotation.status}' status. Must be DRAFT, NEGOTIATION, or RETURNED.`, 400);
   }
 
   if (!quotation.lines || quotation.lines.length === 0) {
@@ -398,21 +410,12 @@ exports.submit = async (id, user = null) => {
     where: { id },
     data: { status: nextStatus },
     include: {
->>>>>>> Stashed changes
       customer: true,
       salesRep: true,
-      lines: { include: { product: true, variant: true } },
+      lines: { include: { product: true } },
     },
   });
-  if (!quotation) throw new AppError('Quotation not found', 404);
-  return quotation;
-};
 
-<<<<<<< Updated upstream
-exports.create = async (data) => {
-  const count = await prisma.quotation.count();
-  const quotationNumber = `QUO-${String(count + 1).padStart(5, '0')}`;
-=======
   // Invalidate quotation list cache
   try {
     cache.delete('quotation:list');
@@ -421,141 +424,57 @@ exports.create = async (data) => {
   }
 
   if (governance.approvalRequired) {
-    const totalSteps = governance.requiredRoles.length;
-    const initialRole = governance.requiredRoles[0];
->>>>>>> Stashed changes
+    const totalSteps = governance.requiredRoles.length || 1;
+    const initialRole = governance.requiredRoles[0] || 'SALES_MANAGER';
 
-  const lines = data.lines || [];
-  const { lines: _, ...quotationData } = data;
-
-  let subtotal = 0;
-  let discountTotal = 0;
-  let taxTotal = 0;
-  let totalCost = 0;
-
-  const processedLines = lines.map((line) => {
-    const lineSubtotal = line.quantity * line.unitPrice;
-    const lineDiscount = lineSubtotal * (line.discountPercent || 0) / 100;
-    const lineNet = lineSubtotal - lineDiscount;
-    const lineTax = lineNet * (line.taxPercent || 0) / 100;
-    const lineTotal = lineNet + lineTax;
-    const lineCost = line.quantity * (line.costPrice || 0);
-    const lineMargin = lineTotal - lineCost;
-
-    subtotal += lineSubtotal;
-    discountTotal += lineDiscount;
-    taxTotal += lineTax;
-    totalCost += lineCost;
-
-    return {
-      ...line,
-      discountAmount: lineDiscount,
-      subtotal: lineSubtotal,
-      total: lineTotal,
-      margin: lineMargin,
-      marginPercent: lineTotal > 0 ? (lineMargin / lineTotal) * 100 : 0,
-    };
-  });
-
-  const totalAmount = subtotal - discountTotal + taxTotal;
-  const grossMargin = totalAmount - totalCost;
-  const grossMarginPercent = totalAmount > 0 ? (grossMargin / totalAmount) * 100 : 0;
-
-  return prisma.quotation.create({
-    data: {
-      ...quotationData,
-      quotationNumber,
-      subtotal,
-      discountTotal,
-      taxTotal,
-      totalAmount,
-      totalCost,
-      grossMargin,
-      grossMarginPercent,
-      lines: { create: processedLines },
-    },
-    include: { customer: true, salesRep: true, lines: true },
-  });
-};
-
-exports.update = async (id, data) => {
-  const existing = await prisma.quotation.findUnique({ where: { id } });
-  if (!existing) throw new AppError('Quotation not found', 404);
-  if (existing.status !== 'DRAFT') throw new AppError('Only draft quotations can be updated', 400);
-
-  return prisma.quotation.update({
-    where: { id },
-    data,
-    include: { customer: true, salesRep: true, lines: true },
-  });
-};
-
-exports.submit = async (id) => {
-  const quotation = await prisma.quotation.findUnique({
-    where: { id },
-    include: { customer: { include: { tier: true } } },
-  });
-  if (!quotation) throw new AppError('Quotation not found', 404);
-  if (quotation.status !== 'DRAFT' && quotation.status !== 'NEGOTIATION') {
-    throw new AppError('Quotation cannot be submitted from current status', 400);
-  }
-
-  let approvalRequired = false;
-
-  const approvalRule = await prisma.approvalRule.findFirst({
-    where: {
-      isActive: true,
-      minAmount: { lte: quotation.totalAmount },
-      OR: [
-        { maxAmount: null },
-        { maxAmount: { gte: quotation.totalAmount } },
-      ],
-    },
-    orderBy: { minAmount: 'desc' },
-  });
-
-  if (approvalRule) {
-    approvalRequired = true;
-  }
-
-  const updateData = {
-    status: 'PENDING_APPROVAL',
-    approvalRequired,
-  };
-
-  if (approvalRequired && approvalRule) {
     await prisma.approvalRequest.create({
       data: {
-        level: approvalRule.requiredLevel,
         quotationId: id,
-        requestedById: quotation.salesRepId,
-        approvalRuleId: approvalRule.id,
+        status: 'PENDING',
+        riskScore: governance.riskScore || 0,
+        riskLevel: governance.riskLevel || 'LOW',
+        currentStep: 1,
+        totalSteps,
+        requiredRole: initialRole,
+        reason: governance.reason || 'Governance approval required for quotation discounts/margins',
+        history: {
+          create: {
+            action: 'SUBMITTED',
+            step: 1,
+            notes: `Submitted by ${user ? user.name || user.email : 'system'}: ${governance.reason || 'Approval required'}`,
+            userId: user?.id,
+          },
+        },
       },
     });
   }
 
-  return prisma.quotation.update({
-    where: { id },
-    data: updateData,
-    include: { customer: true, salesRep: true, lines: true },
+  await logAudit({
+    userId: user?.id,
+    action: 'QUOTATION_SUBMIT',
+    entityType: 'QUOTATION',
+    entityId: id,
+    newValues: { status: nextStatus, approvalRequired: governance.approvalRequired },
   });
+
+  return updatedQuotation;
 };
 
-exports.confirm = async (id) => {
-  const quotation = await prisma.quotation.findUnique({ where: { id } });
+exports.confirm = async (id, user = null) => {
+  const quotation = await prisma.quotation.findUnique({
+    where: { id },
+    include: { customer: true, salesRep: true, lines: true },
+  });
   if (!quotation) throw new AppError('Quotation not found', 404);
   if (quotation.status !== 'APPROVED') throw new AppError('Only approved quotations can be confirmed', 400);
 
-<<<<<<< Updated upstream
-  return prisma.quotation.update({
-=======
   // Validate state transition: APPROVED -> CUSTOMER_CONFIRMED
   validateTransition(quotation.status, 'CUSTOMER_CONFIRMED');
 
   // Customer authorization check
   if (user && user.role === 'CUSTOMER') {
     const custId = user.customerId || user.customer_id;
-    const isOwnCustomer = custId === quotation.customerId || 
+    const isOwnCustomer = (custId && custId === quotation.customerId) || 
       (quotation.customer?.email && quotation.customer.email.toLowerCase() === user.email.toLowerCase()) ||
       quotation.customer?.ownerId === user.id;
     if (!isOwnCustomer) throw new AppError('Access denied', 403);
@@ -569,9 +488,18 @@ exports.confirm = async (id) => {
   }
 
   const updated = await prisma.quotation.update({
->>>>>>> Stashed changes
     where: { id },
     data: { status: 'CUSTOMER_CONFIRMED', confirmedAt: new Date() },
     include: { customer: true, salesRep: true, lines: true },
   });
+
+  await logAudit({
+    userId: user?.id,
+    action: 'QUOTATION_CONFIRM',
+    entityType: 'QUOTATION',
+    entityId: id,
+    newValues: { status: 'CUSTOMER_CONFIRMED' },
+  });
+
+  return updated;
 };

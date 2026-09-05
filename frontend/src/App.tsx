@@ -34,6 +34,8 @@ import ApprovalRules from './pages/management/ApprovalRules';
 import ManagementWarehouses from './pages/management/Warehouses';
 import ManagementSubscriptions from './pages/management/Subscriptions';
 import Users from './pages/management/Users';
+import KnowledgeBase from './pages/management/KnowledgeBase';
+import SupportChatbot from './components/chat/SupportChatbot';
 
 // Operations Pages
 import OperationsDashboard from './pages/operations/Dashboard';
@@ -112,6 +114,7 @@ function App() {
               <Route path="warehouses" element={<ManagementWarehouses />} />
               <Route path="subscriptions" element={<ManagementSubscriptions />} />
               <Route path="users" element={<Users />} />
+              <Route path="knowledge-base" element={<KnowledgeBase />} />
               <Route index element={<Navigate to="dashboard" replace />} />
             </Route>
 
@@ -162,6 +165,8 @@ function App() {
             {/* Catch-all */}
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
+          {/* Global Customer Support RAG Chatbot - Visible across all portals & roles */}
+          <SupportChatbot />
         </BrowserRouter>
       </ToastProvider>
     </AuthProvider>

@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut, apiDelete } from '../services/api';
+import { apiGet, apiPost, apiPut, apiDelete, apiUpload } from '../services/api';
 import type { Quotation, Product, Customer } from '../types';
 
 export interface DiscountCheckResult {
@@ -539,6 +539,127 @@ export const operationsApi = {
   getRevenueAnalytics: async () => {
     const res = await apiGet<any>('/api/analytics/revenue');
     return res.data || res;
+  },
+};
+
+// ─── RAG Chatbot API ────────────────────────────────────────────────────────
+export interface ChatCitation {
+  documentId?: string;
+  source?: string;
+  chunkId?: string;
+  similarity?: number;
+  score?: number;
+  preview?: string;
+  text?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface ChatMessageResponse {
+  success: boolean;
+  message?: string;
+  answer?: string;
+  toolUsed?: string;
+  citations?: ChatCitation[];
+  executionTimeMs?: number;
+  metadata?: Record<string, any>;
+  error?: string;
+}
+
+export const ragChatApi = {
+  sendMessage: async (message: string, sessionId?: string, userId?: string): Promise<ChatMessageResponse> => {
+    const res = await apiPost<any>('/api/ai/chat', {
+      message,
+      sessionId: sessionId || `session_${Date.now()}`,
+      userId,
+    });
+    return {
+      ...res,
+      message: res.message || res.answer || res.response?.answer || res.data?.message || res.data?.answer,
+    };
+  },
+
+  getTools: async () => {
+    return apiGet<{ success: boolean; tools: any[] }>('/api/ai/tools');
+  },
+
+  queryDirect: async (query: string, topK: number = 4) => {
+    return apiPost<{ success: boolean; count: number; results: any[] }>('/api/rag/query', {
+      query,
+      topK,
+    });
+  },
+};
+
+// ─── Admin Knowledge Base (PDF Management) API ──────────────────────────────
+export interface IngestedDocument {
+  id: string;
+  filename: string;
+  originalName?: string;
+  pageCount?: number;
+  totalPages?: number;
+  chunkCount?: number;
+  fileSize?: number;
+  size?: number;
+  status: 'PROCESSED' | 'INDEXED' | 'FAILED' | 'PROCESSING';
+  uploadedAt: string;
+  createdAt?: string;
+}
+
+export const knowledgeBaseApi = {
+  getDocuments: async (): Promise<IngestedDocument[]> => {
+    try {
+      const res = await apiGet<{ success: boolean; documents?: IngestedDocument[]; uploads?: IngestedDocument[]; count?: number }>('/api/uploads');
+      const list = res.documents || res.uploads || [];
+      return list.map((d: any) => ({
+        ...d,
+        id: d.id || d.fileId,
+        fileSize: d.fileSize || d.sizeBytes || d.size || 0,
+        pageCount: d.pageCount || d.totalPages || 1,
+        chunkCount: d.chunkCount ?? 0,
+        originalName: d.originalName || d.filename,
+        uploadedAt: d.uploadedAt || d.createdAt,
+      }));
+    } catch {
+      const adminRes = await apiGet<{ success: boolean; documents?: IngestedDocument[]; pdfs?: IngestedDocument[] }>('/api/ai/admin/pdfs');
+      const list = adminRes.documents || adminRes.pdfs || [];
+      return list.map((d: any) => ({
+        ...d,
+        id: d.id || d.fileId,
+        fileSize: d.fileSize || d.sizeBytes || d.size || 0,
+        pageCount: d.pageCount || d.totalPages || 1,
+        chunkCount: d.chunkCount ?? 0,
+        originalName: d.originalName || d.filename,
+        uploadedAt: d.uploadedAt || d.createdAt,
+      }));
+    }
+  },
+
+  uploadPdf: async (file: File): Promise<any> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      return await apiUpload<any>('/api/uploads/ingest', formData);
+    } catch {
+      return await apiUpload<any>('/api/ai/admin/upload-pdf', formData);
+    }
+  },
+
+  deleteDocument: async (id: string): Promise<any> => {
+    return apiDelete<any>(`/api/uploads/${id}`);
+  },
+
+  reprocessDocument: async (id: string): Promise<any> => {
+    return apiPost<any>(`/api/uploads/${id}/reprocess`);
+  },
+
+  getDocumentChunks: async (id: string): Promise<any[]> => {
+    try {
+      const res = await apiGet<{ success: boolean; chunks?: any[] }>(`/api/uploads/${id}/chunks`);
+      return res.chunks || [];
+    } catch {
+      const adminRes = await apiGet<{ success: boolean; chunks?: any[] }>(`/api/ai/admin/documents/${id}/chunks`);
+      return adminRes.chunks || [];
+    }
   },
 };
 

@@ -1,13 +1,7 @@
 'use strict';
 
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient, Prisma } = require('@prisma/client');
 const { AppError } = require('../../utils/errors');
-<<<<<<< Updated upstream
-
-const prisma = new PrismaClient();
-
-exports.list = async ({ categoryId }) => {
-=======
 const { logAudit } = require('../../services/audit.service');
 const { generateKey, cache } = require('../../cache');
 const prisma = require('../../database/prisma');
@@ -15,7 +9,6 @@ const prisma = require('../../database/prisma');
 const PRODUCTS_LIST_TTL = 60; // 1 minute
 
 exports.list = async ({ categoryId, search, active, limit = 100, offset = 0 } = {}) => {
->>>>>>> Stashed changes
   const where = {};
   if (categoryId) where.categoryId = categoryId;
 
@@ -55,14 +48,6 @@ exports.getById = async (id) => {
   return product;
 };
 
-<<<<<<< Updated upstream
-exports.create = async (data) => {
-  if (data.sku) {
-    const exists = await prisma.product.findUnique({ where: { sku: data.sku } });
-    if (exists) throw new AppError('SKU already exists', 409);
-  }
-  return prisma.product.create({ data, include: { category: true } });
-=======
 exports.create = async (data, user = null) => {
   if (!data.name) throw new AppError('Product name is required', 400);
   if (!data.sku) throw new AppError('Product SKU is required', 400);
@@ -112,10 +97,9 @@ exports.create = async (data, user = null) => {
   });
 
   return product;
->>>>>>> Stashed changes
 };
 
-exports.update = async (id, data) => {
+exports.update = async (id, data, user = null) => {
   const existing = await prisma.product.findUnique({ where: { id } });
   if (!existing) throw new AppError('Product not found', 404);
 
@@ -124,9 +108,6 @@ exports.update = async (id, data) => {
     if (exists) throw new AppError('SKU already exists', 409);
   }
 
-<<<<<<< Updated upstream
-  return prisma.product.update({ where: { id }, data, include: { category: true } });
-=======
   const updateData = {};
   if (data.name !== undefined) updateData.name = data.name;
   if (data.sku !== undefined) updateData.sku = data.sku;
@@ -191,5 +172,4 @@ exports.createCategory = async (data, user = null) => {
   });
 
   return category;
->>>>>>> Stashed changes
 };

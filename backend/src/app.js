@@ -1,5 +1,7 @@
 'use strict';
 
+require('tsx/cjs');
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -118,6 +120,21 @@ app.get('/api/audit-logs', authenticate, requireRole(['ADMIN', 'SALES_MANAGER', 
     next(err);
   }
 });
+
+// AI, RAG & Knowledge Base routes (Migrated from TCS-Hackathon)
+const aiRoutes = require('./ai/routes/ai.routes').default || require('./ai/routes/ai.routes');
+const aiAdminRoutes = require('./ai/routes/admin.routes').default || require('./ai/routes/admin.routes');
+const uploadsRoutes = require('./uploads/upload.routes').default || require('./uploads/upload.routes');
+const ragRoutes = require('./ai/routes/rag.routes').default || require('./ai/routes/rag.routes');
+
+app.use('/api/v1/ai', aiRoutes);
+app.use('/api/ai', aiRoutes);
+app.use('/api/v1/ai/admin', aiAdminRoutes);
+app.use('/api/ai/admin', aiAdminRoutes);
+app.use('/api/v1/uploads', uploadsRoutes);
+app.use('/api/uploads', uploadsRoutes);
+app.use('/api/v1/rag', ragRoutes);
+app.use('/api/rag', ragRoutes);
 
 app.use(errorHandler);
 

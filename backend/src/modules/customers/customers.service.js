@@ -2,10 +2,6 @@
 
 const { PrismaClient } = require('@prisma/client');
 const { AppError } = require('../../utils/errors');
-<<<<<<< Updated upstream
-
-const prisma = new PrismaClient();
-=======
 const { logAudit } = require('../../services/audit.service');
 const { generateKey, cache } = require('../../cache');
 const prisma = require('../../database/prisma');
@@ -13,12 +9,30 @@ const prisma = require('../../database/prisma');
 const CUSTOMERS_LIST_TTL = 60; // 1 minute
 
 exports.list = async ({ user, tierId, search, limit = 50, offset = 0 } = {}) => {
-  const conditions = [];
->>>>>>> Stashed changes
-
-exports.list = async ({ tierId }) => {
   const where = {};
   if (tierId) where.tierId = tierId;
+  if (search) {
+    where.OR = [
+      { name: { contains: search, mode: 'insensitive' } },
+      { email: { contains: search, mode: 'insensitive' } },
+      { company: { contains: search, mode: 'insensitive' } },
+    ];
+  }
+
+  // If customer role, only return their own customer profile
+  if (user && user.role === 'CUSTOMER') {
+    const custId = user.customerId || user.customer_id;
+    if (custId) {
+      where.id = custId;
+    } else {
+      where.OR = [{ email: user.email }, { ownerId: user.id }];
+    }
+  }
+
+  // If sales rep role, only show assigned customers
+  if (user && user.role === 'SALES_REP') {
+    where.OR = [{ salesRepId: user.id }, { ownerId: user.id }];
+  }
 
   const cacheKey = generateKey(
     'customers:list',
@@ -38,8 +52,13 @@ exports.list = async ({ tierId }) => {
 
   const result = await prisma.customer.findMany({
     where,
-    include: { tier: true },
+    include: {
+      tier: true,
+      salesRep: { select: { id: true, name: true, email: true } },
+    },
     orderBy: { createdAt: 'desc' },
+    take: Number(limit) || 50,
+    skip: Number(offset) || 0,
   });
 
   // Store in cache with 1-minute TTL (customers change, but list is read frequently)
@@ -48,19 +67,28 @@ exports.list = async ({ tierId }) => {
   return result;
 };
 
-exports.getById = async (id) => {
+exports.getById = async (id, user = null) => {
   const customer = await prisma.customer.findUnique({
     where: { id },
-    include: { tier: true },
+    include: {
+      tier: true,
+      salesRep: { select: { id: true, name: true, email: true } },
+    },
   });
   if (!customer) throw new AppError('Customer not found', 404);
+
+  // Authorization check for customer
+  if (user && user.role === 'CUSTOMER') {
+    const custId = user.customerId || user.customer_id;
+    const isOwnCustomer = (custId && customer.id === custId) ||
+      (customer.email && customer.email.toLowerCase() === user.email.toLowerCase()) ||
+      customer.ownerId === user.id;
+    if (!isOwnCustomer) throw new AppError('Access denied', 403);
+  }
+
   return customer;
 };
 
-<<<<<<< Updated upstream
-exports.create = async (data) => {
-  return prisma.customer.create({ data, include: { tier: true } });
-=======
 exports.create = async (data, user = null) => {
   if (!data.name) throw new AppError('Customer name is required', 400);
 
@@ -104,19 +132,16 @@ exports.create = async (data, user = null) => {
   });
 
   return customer;
->>>>>>> Stashed changes
 };
 
-exports.update = async (id, data) => {
+exports.update = async (id, data, user = null) => {
   const existing = await prisma.customer.findUnique({ where: { id } });
   if (!existing) throw new AppError('Customer not found', 404);
-<<<<<<< Updated upstream
-  return prisma.customer.update({ where: { id }, data, include: { tier: true } });
-=======
 
   // Authorization checks
   if (user && user.role === 'CUSTOMER') {
-    const isOwnCustomer = existing.id === user.customer_id || 
+    const custId = user.customerId || user.customer_id;
+    const isOwnCustomer = (custId && existing.id === custId) || 
       (existing.email && existing.email.toLowerCase() === user.email.toLowerCase()) ||
       existing.ownerId === user.id;
     if (!isOwnCustomer) throw new AppError('Access denied', 403);
@@ -174,5 +199,4 @@ exports.listTiers = async () => {
   return prisma.customerTier.findMany({
     orderBy: { discountPct: 'asc' },
   });
->>>>>>> Stashed changes
 };

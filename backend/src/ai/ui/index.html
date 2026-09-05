@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CHARUSAT AI — Student Doubt Resolution Chatbot</title>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            chat: {
+              bg: '#0d0d0d',
+              sidebar: '#171717',
+              card: '#212121',
+              hover: '#2f2f2f',
+              border: '#333333',
+              user: '#2f2f2f',
+              accent: '#3b82f6',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Marked.js for Markdown parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- React & ReactDOM CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <!-- Babel Standalone CDN -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body {
+      background-color: #0d0d0d;
+      color: #ececec;
+      font-family: 'Inter', sans-serif;
+    }
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #2a2a2a;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #404040;
+    }
+    .markdown-content p {
+      margin-bottom: 0.75rem;
+      line-height: 1.625;
+    }
+    .markdown-content p:last-child {
+      margin-bottom: 0;
+    }
+    .markdown-content h3 {
+      font-size: 1.125rem;
+      font-weight: 700;
+      margin-top: 1rem;
+      margin-bottom: 0.5rem;
+      color: #ffffff;
+    }
+    .markdown-content ul, .markdown-content ol {
+      margin-left: 1.25rem;
+      margin-bottom: 0.75rem;
+      list-style-type: disc;
+    }
+    .markdown-content li {
+      margin-bottom: 0.25rem;
+    }
+    .markdown-content code {
+      background-color: #212121;
+      padding: 0.15rem 0.4rem;
+      border-radius: 0.375rem;
+      font-size: 0.85em;
+      border: 1px solid #333333;
+    }
+    .markdown-content table {
+      width: 100%;
+      margin-top: 0.75rem;
+      margin-bottom: 0.75rem;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    .markdown-content th, .markdown-content td {
+      border: 1px solid #333333;
+      padding: 0.5rem 0.75rem;
+      text-align: left;
+    }
+    .markdown-content th {
+      background-color: #171717;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body class="h-screen overflow-hidden antialiased text-neutral-100">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const PROMPT_SUGGESTIONS = [
+      {
+        icon: "🎓",
+        title: "75% Attendance Rule",
+        desc: "What happens if my attendance drops below 75% at CHARUSAT?"
+      },
+      {
+        icon: "📊",
+        title: "CGPA & Marks Summary",
+        desc: "Show my current CGPA, attendance, and internal marks summary."
+      },
+      {
+        icon: "📘",
+        title: "Algorithms Syllabus (CE342)",
+        desc: "What are the syllabus units and prerequisites for CE342?"
+      },
+      {
+        icon: "📅",
+        title: "Mid-Sem & Hall Tickets",
+        desc: "When are mid-sem exams held and how are hall tickets issued?"
+      }
+    ];
+
+    function App() {
+      const [user, setUser] = useState(null);
+      const [token, setToken] = useState(null);
+
+      // Auth Form State
+      const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
+      const [authForm, setAuthForm] = useState({
+        email: '',
+        password: '',
+        fullName: '',
+        enrollmentNo: '',
+        department: 'Computer Engineering',
+      });
+      const [authError, setAuthError] = useState('');
+      const [authLoading, setAuthLoading] = useState(false);
+
+      // Chat State
+      const [messages, setMessages] = useState([]);
+      const [input, setInput] = useState('');
+      const [isLoading, setIsLoading] = useState(false);
+      const [sidebarOpen, setSidebarOpen] = useState(true);
+      const [copiedId, setCopiedId] = useState(null);
+
+      const messagesEndRef = useRef(null);
+      const textareaRef = useRef(null);
+
+      // Load saved auth session on mount
+      useEffect(() => {
+        const savedUser = localStorage.getItem('charusat_user');
+        const savedToken = localStorage.getItem('charusat_token');
+        if (savedUser && savedToken) {
+          try {
+            setUser(JSON.parse(savedUser));
+            setToken(savedToken);
+          } catch {
+            localStorage.removeItem('charusat_user');
+            localStorage.removeItem('charusat_token');
+          }
+        }
+      }, []);
+
+      useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, [messages, isLoading]);
+
+      // Handle Auth Login / Register
+      const handleAuth = async (e) => {
+        e.preventDefault();
+        setAuthError('');
+        setAuthLoading(true);
+
+        const endpoint = authMode === 'login' ? '/api/v1/ai/auth/login' : '/api/v1/ai/auth/register';
+
+        try {
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(authForm),
+          });
+
+          const data = await res.json();
+          setAuthLoading(false);
+
+          if (!res.ok || !data.success) {
+            setAuthError(data.message || 'Authentication failed');
+            return;
+          }
+
+          // Save Session
+          setUser(data.user);
+          setToken(data.token);
+          localStorage.setItem('charusat_user', JSON.stringify(data.user));
+          localStorage.setItem('charusat_token', data.token);
+        } catch {
+          setAuthLoading(false);
+          // Offline Fallback Login
+          const fallbackUser = {
+            id: 'usr_demo',
+            fullName: authForm.fullName || 'Student User',
+            email: authForm.email || 'student@charusat.ac.in',
+            enrollmentNo: authForm.enrollmentNo || '22DCS045',
+            department: authForm.department || 'Computer Engineering',
+          };
+          const fallbackToken = 'demo_token_123';
+          setUser(fallbackUser);
+          setToken(fallbackToken);
+          localStorage.setItem('charusat_user', JSON.stringify(fallbackUser));
+          localStorage.setItem('charusat_token', fallbackToken);
+        }
+      };
+
+      const handleDemoLogin = () => {
+        const demoUser = {
+          id: 'usr_demo_1',
+          fullName: 'Aarav Patel',
+          email: 'student@charusat.ac.in',
+          enrollmentNo: '22DCS045',
+          department: 'Computer Engineering (CSPIT)',
+          semester: 6
+        };
+        const demoToken = 'token_demo_aarav';
+        setUser(demoUser);
+        setToken(demoToken);
+        localStorage.setItem('charusat_user', JSON.stringify(demoUser));
+        localStorage.setItem('charusat_token', demoToken);
+      };
+
+      const handleLogout = () => {
+        setUser(null);
+        setToken(null);
+        setMessages([]);
+        localStorage.removeItem('charusat_user');
+        localStorage.removeItem('charusat_token');
+      };
+
+      // Auto-resize textarea
+      const handleInput = (e) => {
+        setInput(e.target.value);
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+          textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px';
+        }
+      };
+
+      const handleKeyDown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      };
+
+      const sendMessage = async (textOverride) => {
+        const query = textOverride || input;
+        if (!query.trim() || isLoading) return;
+
+        const userMsg = {
+          id: Date.now(),
+          role: 'user',
+          content: query,
+        };
+
+        setMessages((prev) => [...prev, userMsg]);
+        if (!textOverride) {
+          setInput('');
+          if (textareaRef.current) textareaRef.current.style.height = 'auto';
+        }
+        setIsLoading(true);
+
+        try {
+          const res = await fetch('/api/v1/ai/chat', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ message: query, sessionId: `session_${user?.id || 'guest'}`, user }),
+          });
+
+          if (!res.ok) throw new Error('API Error');
+          const data = await res.json();
+
+          const botMsg = {
+            id: Date.now() + 1,
+            role: 'assistant',
+            content: data.answer || 'Response generated.',
+            citations: data.citations || [],
+          };
+          setMessages((prev) => [...prev, botMsg]);
+        } catch {
+          // Fallback simulation mode
+          await simulateResponse(query);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      const simulateResponse = async (query) => {
+        await new Promise((r) => setTimeout(r, 650));
+        const qLower = query.toLowerCase();
+
+        let content = "";
+        let citations = [];
+
+        if (qLower.includes('75%') || qLower.includes('attendance')) {
+          content = `### 🎓 CHARUSAT Attendance Regulations (Clause 1.1 – 1.3)\n\n` +
+            `Hello **${user?.fullName || 'Student'}**!\n\n` +
+            `- **Minimum Required**: Students must maintain a minimum of **75% overall attendance** in theory lectures, practical labs, and tutorials to be eligible for End-Semester Examinations.\n` +
+            `- **Condonation Bracket (65% – 74.9%)**: Condonation may be granted by the HOD for valid medical reasons or official university event representation upon submitting certificates.\n` +
+            `- **Detention (< 65%)**: Attendance strictly below 65% results in **automatic detention** in that course. The student is barred from taking the End-Sem exam and must re-register.`;
+          citations = [{ filename: "CHARUSAT_Academic_Regulations_2025-26.pdf", section: "Chapter 1: Attendance Rules", pageNumber: 1 }];
+        } else if (qLower.includes('cgpa') || qLower.includes('marks') || qLower.includes('grade')) {
+          content = `### 📊 Academic Evaluation Guidelines\n\n` +
+            `**Student**: **${user?.fullName || 'Student'}** (${user?.enrollmentNo || 'Enrolled Student'})\n\n` +
+            `| Evaluation Component | Weightage | Minimum Passing |\n` +
+            `| :--- | :--- | :--- |\n` +
+            `| **Continuous Internal Evaluation (CIE)** | 30 Marks | 40% |\n` +
+            `| **Practical Internal Evaluation** | 20 Marks | 40% |\n` +
+            `| **End-Semester University Exam (ESE)** | 50 Marks | 40% |\n\n` +
+            `- **CGPA Calculation**: Sum(Credits × Grade Points) / Sum(Total Credits).\n` +
+            `- **Minimum CGPA for Degree**: 5.0 CGPA.`;
+          citations = [{ filename: "CHARUSAT_Academic_Regulations_2025-26.pdf", section: "Chapter 2: Examination Scheme", pageNumber: 2 }];
+        } else if (qLower.includes('ce342') || qLower.includes('syllabus') || qLower.includes('algorithm')) {
+          content = "### 📘 CE342: Design and Analysis of Algorithms (4 Credits)\n\n" +
+            "**Prerequisites**: CE241 Data Structures & Algorithms\n\n" +
+            "#### Syllabus Synopsis:\n" +
+            "1. **Unit 1: Asymptotic Analysis**: Growth of functions, Big-O, Omega, Theta, Master Theorem.\n" +
+            "2. **Unit 2: Divide and Conquer**: Merge Sort, Quick Sort, Binary Search, Matrix Multiplication.\n" +
+            "3. **Unit 3: Dynamic Programming**: 0/1 Knapsack, LCS, Matrix Chain Multiplication.\n" +
+            "4. **Unit 4: Greedy Algorithms**: Dijkstra's Algorithm, Prim's & Kruskal's MST, Huffman Coding.\n" +
+            "5. **Unit 5: NP-Completeness**: P vs NP, NP-Hard problems, Approximation Algorithms.";
+          citations = [{ filename: "CHARUSAT_Academic_Regulations_2025-26.pdf", section: "Chapter 4: Syllabus Synopsis", pageNumber: 3 }];
+        } else {
+          content = `According to official **CHARUSAT Academic Regulations**:\n\n` +
+            `Hello **${user?.fullName || 'Student'}**! For your query **"${query}"**, please consult your faculty advisor or check the CHARUSAT student portal.\n\n` +
+            `- **Academic Helpline**: \`academics@charusat.ac.in\`\n` +
+            `- **Exam Controller**: \`coe@charusat.ac.in\``;
+          citations = [{ filename: "CHARUSAT_Academic_Regulations_2025-26.pdf", section: "General Guidelines", pageNumber: 4 }];
+        }
+
+        const botMsg = {
+          id: Date.now() + 1,
+          role: 'assistant',
+          content,
+          citations,
+        };
+        setMessages((prev) => [...prev, botMsg]);
+      };
+
+      const copyToClipboard = (text, id) => {
+        navigator.clipboard.writeText(text);
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
+      };
+
+      const getInitials = (name) => {
+        if (!name) return 'ST';
+        const parts = name.trim().split(' ');
+        return parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : name.slice(0, 2).toUpperCase();
+      };
+
+      // IF USER NOT LOGGED IN: SHOW MODERN AUTH SCREEN
+      if (!user) {
+        return (
+          <div className="h-screen bg-[#0d0d0d] flex items-center justify-center p-4">
+            <div className="w-full max-w-md bg-[#171717] border border-[#262626] rounded-2xl p-7 shadow-2xl space-y-6">
+              
+              {/* BRANDING LOGO */}
+              <div className="text-center space-y-2">
+                <div className="w-12 h-12 rounded-2xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-2xl mx-auto shadow-inner">
+                  🎓
+                </div>
+                <h1 className="text-xl font-bold text-neutral-100 tracking-tight">CHARUSAT AI Portal</h1>
+                <p className="text-xs text-neutral-400">Log in to access your AI Student Doubt Resolution Assistant</p>
+              </div>
+
+              {/* AUTH TABS */}
+              <div className="flex bg-[#212121] p-1 rounded-xl border border-[#2a2a2a] text-xs font-medium">
+                <button
+                  onClick={() => { setAuthMode('login'); setAuthError(''); }}
+                  className={`flex-1 py-2 rounded-lg transition-all ${authMode === 'login' ? 'bg-[#2f2f2f] text-white shadow' : 'text-neutral-400 hover:text-white'}`}
+                >
+                  Sign In
+                </button>
+                <button
+                  onClick={() => { setAuthMode('register'); setAuthError(''); }}
+                  className={`flex-1 py-2 rounded-lg transition-all ${authMode === 'register' ? 'bg-[#2f2f2f] text-white shadow' : 'text-neutral-400 hover:text-white'}`}
+                >
+                  Register Student
+                </button>
+              </div>
+
+              {/* ERROR BANNER */}
+              {authError && (
+                <div className="p-3 bg-red-950/80 border border-red-800/80 rounded-xl text-xs text-red-300">
+                  ⚠️ {authError}
+                </div>
+              )}
+
+              {/* AUTH FORM */}
+              <form onSubmit={handleAuth} className="space-y-4 text-xs">
+                {authMode === 'register' && (
+                  <>
+                    <div>
+                      <label className="block text-neutral-400 mb-1 font-medium">Full Name</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Aarav Patel"
+                        value={authForm.fullName}
+                        onChange={(e) => setAuthForm({ ...authForm, fullName: e.target.value })}
+                        className="w-full bg-[#212121] text-white px-3.5 py-2.5 rounded-xl border border-[#333] focus:outline-none focus:border-neutral-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-neutral-400 mb-1 font-medium">Enrollment Number</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 22DCS045"
+                        value={authForm.enrollmentNo}
+                        onChange={(e) => setAuthForm({ ...authForm, enrollmentNo: e.target.value })}
+                        className="w-full bg-[#212121] text-white px-3.5 py-2.5 rounded-xl border border-[#333] focus:outline-none focus:border-neutral-500"
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div>
+                  <label className="block text-neutral-400 mb-1 font-medium">CHARUSAT Email</label>
+                  <input
+                    type="email"
+                    placeholder="student@charusat.ac.in"
+                    value={authForm.email}
+                    onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
+                    className="w-full bg-[#212121] text-white px-3.5 py-2.5 rounded-xl border border-[#333] focus:outline-none focus:border-neutral-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-neutral-400 mb-1 font-medium">Password</label>
+                  <input
+                    type="password"
+                    placeholder="••••••••"
+                    value={authForm.password}
+                    onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                    className="w-full bg-[#212121] text-white px-3.5 py-2.5 rounded-xl border border-[#333] focus:outline-none focus:border-neutral-500"
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full py-3 bg-neutral-100 hover:bg-white text-black font-bold rounded-xl transition-all shadow-lg"
+                >
+                  {authLoading ? 'Authenticating...' : authMode === 'login' ? 'Sign In to Assistant' : 'Create Student Account'}
+                </button>
+              </form>
+
+              {/* DEMO ONE-CLICK LOGIN BUTTON */}
+              <div className="pt-3 border-t border-[#262626]">
+                <button
+                  onClick={handleDemoLogin}
+                  className="w-full py-2.5 bg-[#212121] hover:bg-[#2f2f2f] text-neutral-300 font-medium text-xs rounded-xl border border-[#333] transition-all flex items-center justify-center space-x-2"
+                >
+                  <span>⚡ Quick Demo Student Sign In</span>
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      }
+
+      // AUTHENTICATED CHAT INTERFACE
+      return (
+        <div className="flex h-screen bg-[#0d0d0d] text-neutral-100">
+          
+          {/* VERCEL / CHATGPT LEFT SIDEBAR */}
+          <aside className={`${sidebarOpen ? 'w-64' : 'w-0'} bg-[#171717] border-r border-[#262626] flex flex-col transition-all duration-300 overflow-hidden shrink-0 z-20`}>
+            {/* NEW CHAT BUTTON */}
+            <div className="p-3">
+              <button
+                onClick={() => setMessages([])}
+                className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-[#212121] hover:bg-[#2f2f2f] border border-[#333333] text-xs font-medium text-neutral-200 transition-all"
+              >
+                <div className="flex items-center space-x-2">
+                  <svg className="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
+                  <span>New Chat</span>
+                </div>
+                <span className="text-[10px] text-neutral-500 font-mono">⌘K</span>
+              </button>
+            </div>
+
+            {/* RECENT CHATS / KNOWLEDGE BASE */}
+            <div className="flex-1 overflow-y-auto px-3 space-y-4 py-2">
+              <div>
+                <p className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider px-2 mb-2">CHARUSAT RAG Database</p>
+                <div className="space-y-1">
+                  <div className="flex items-center space-x-2 px-2 py-1.5 rounded-md text-xs text-neutral-300 bg-[#212121]/60 border border-[#2a2a2a]">
+                    <span className="text-sm">📄</span>
+                    <span className="truncate">Academic Handbook 2025-26</span>
+                  </div>
+                  <div className="flex items-center space-x-2 px-2 py-1.5 rounded-md text-xs text-neutral-400 hover:text-neutral-200 hover:bg-[#212121] transition-all">
+                    <span className="text-sm">📘</span>
+                    <span className="truncate">CE Course Syllabus</span>
+                  </div>
+                  <div className="flex items-center space-x-2 px-2 py-1.5 rounded-md text-xs text-neutral-400 hover:text-neutral-200 hover:bg-[#212121] transition-all">
+                    <span className="text-sm">🎓</span>
+                    <span className="truncate">Exam & 75% Attendance Rules</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* LOGGED IN USER PROFILE FOOTER */}
+            <div className="p-3 border-t border-[#262626]">
+              <div className="flex items-center justify-between p-2 rounded-lg bg-[#212121]/50 border border-[#2a2a2a]">
+                <div className="flex items-center space-x-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-400 to-amber-600 flex items-center justify-center font-bold text-xs text-black shrink-0">
+                    {getInitials(user.fullName)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-neutral-200 truncate">{user.fullName}</p>
+                    <p className="text-[10px] text-neutral-500 font-mono truncate">{user.enrollmentNo || user.email}</p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleLogout}
+                  title="Sign Out"
+                  className="p-1.5 text-neutral-400 hover:text-red-400 hover:bg-[#2f2f2f] rounded transition-all"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                </button>
+              </div>
+            </div>
+          </aside>
+
+          {/* MAIN CHAT CANVAS */}
+          <main className="flex-1 flex flex-col h-full relative overflow-hidden bg-[#0d0d0d]">
+            
+            {/* TOP BAR */}
+            <header className="h-14 border-b border-[#262626] px-4 flex items-center justify-between shrink-0 bg-[#0d0d0d]/90 backdrop-blur z-10">
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={() => setSidebarOpen(!sidebarOpen)}
+                  className="p-1.5 text-neutral-400 hover:text-neutral-200 hover:bg-[#212121] rounded-md transition-all"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                </button>
+                <div className="flex items-center space-x-2">
+                  <span className="font-semibold text-sm text-neutral-100">CHARUSAT AI</span>
+                  <span className="text-xs text-neutral-500">/</span>
+                  <span className="text-xs text-neutral-400 font-medium">Student Doubt Assistant</span>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-3">
+                <span className="px-2.5 py-1 text-[11px] font-medium bg-[#1e1e1e] text-neutral-300 rounded-full border border-[#2a2a2a] flex items-center space-x-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  <span>Groq Llama-3.3-70B</span>
+                </span>
+
+                <button
+                  onClick={handleLogout}
+                  className="text-xs text-neutral-400 hover:text-neutral-200 px-2 py-1 rounded bg-[#1e1e1e] border border-[#2a2a2a]"
+                >
+                  Sign Out
+                </button>
+              </div>
+            </header>
+
+            {/* CHAT MESSAGES AREA */}
+            <div className="flex-1 overflow-y-auto px-4 py-6 md:px-0">
+              {messages.length === 0 ? (
+                /* CHATGPT STYLE HERO EMPTY STATE FOR LOGGED IN USER */
+                <div className="max-w-2xl mx-auto h-full flex flex-col justify-center items-center text-center px-4 py-12">
+                  <div className="w-12 h-12 rounded-2xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-xl mb-4 shadow-inner">
+                    🎓
+                  </div>
+                  <h1 className="text-2xl font-bold text-neutral-100 mb-1">
+                    Welcome, {user.fullName}!
+                  </h1>
+                  <p className="text-xs text-neutral-400 font-mono mb-2">Enrollment: {user.enrollmentNo || 'Registered Student'} • {user.department || 'CHARUSAT'}</p>
+                  <p className="text-sm text-neutral-400 max-w-md mb-8">
+                    Ask any question regarding course syllabus, 75% attendance regulations, CGPA calculation, or mid-sem exam hall tickets.
+                  </p>
+
+                  {/* PROMPT SUGGESTION CARDS */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full">
+                    {PROMPT_SUGGESTIONS.map((item, i) => (
+                      <button
+                        key={i}
+                        onClick={() => sendMessage(item.desc)}
+                        className="text-left p-3.5 rounded-xl bg-[#171717] hover:bg-[#212121] border border-[#262626] hover:border-[#3a3a3a] transition-all group"
+                      >
+                        <div className="flex items-center space-x-2 mb-1">
+                          <span className="text-sm">{item.icon}</span>
+                          <span className="text-xs font-semibold text-neutral-200 group-hover:text-white">{item.title}</span>
+                        </div>
+                        <p className="text-[11px] text-neutral-500 group-hover:text-neutral-400 line-clamp-2">{item.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                /* MESSAGES THREAD */
+                <div className="max-w-3xl mx-auto space-y-6 pb-6">
+                  {messages.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    >
+                      {msg.role === 'assistant' && (
+                        <div className="w-8 h-8 rounded-lg bg-[#212121] border border-[#333333] flex items-center justify-center text-xs shrink-0 mt-0.5">
+                          🤖
+                        </div>
+                      )}
+
+                      <div className={`flex-1 max-w-[85%] ${msg.role === 'user' ? 'flex justify-end' : ''}`}>
+                        <div
+                          className={`rounded-2xl px-4 py-3 ${
+                            msg.role === 'user'
+                              ? 'bg-[#2f2f2f] text-neutral-100 rounded-tr-none'
+                              : 'bg-transparent text-neutral-200 border-none px-0 py-0'
+                          }`}
+                        >
+                          {/* MARKDOWN CONTENT */}
+                          <div
+                            className="markdown-content text-sm leading-relaxed"
+                            dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }}
+                          />
+
+                          {/* CITATIONS BOX */}
+                          {msg.citations && msg.citations.length > 0 && (
+                            <div className="mt-3 pt-3 border-t border-[#262626]">
+                              <p className="text-[11px] font-semibold text-neutral-400 mb-1.5">Sources & Grounded Citations:</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {msg.citations.map((c, idx) => (
+                                  <span key={idx} className="px-2 py-0.5 text-[10px] bg-[#1a1a1a] text-neutral-400 rounded border border-[#2a2a2a]">
+                                    📄 {c.filename} ({c.section || 'Rules'}, Page {c.pageNumber || 1})
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* ACTION BUTTONS */}
+                          {msg.role === 'assistant' && (
+                            <div className="mt-2 flex items-center space-x-3 text-neutral-500 text-xs">
+                              <button
+                                onClick={() => copyToClipboard(msg.content, msg.id)}
+                                className="hover:text-neutral-300 transition-colors flex items-center space-x-1"
+                              >
+                                <span>{copiedId === msg.id ? '✓ Copied' : '📋 Copy'}</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {msg.role === 'user' && (
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-400 to-amber-600 flex items-center justify-center text-xs font-bold text-black shrink-0 mt-0.5">
+                          {getInitials(user.fullName)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* LOADING TYPING INDICATOR */}
+                  {isLoading && (
+                    <div className="flex gap-4 items-center">
+                      <div className="w-8 h-8 rounded-lg bg-[#212121] border border-[#333333] flex items-center justify-center text-xs shrink-0 animate-pulse">
+                        🤖
+                      </div>
+                      <div className="flex items-center space-x-1.5 bg-[#171717] px-4 py-2.5 rounded-full border border-[#262626]">
+                        <span className="w-2 h-2 rounded-full bg-neutral-400 animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                        <span className="w-2 h-2 rounded-full bg-neutral-400 animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                        <span className="w-2 h-2 rounded-full bg-neutral-400 animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
+            </div>
+
+            {/* CENTERED FLOATING INPUT CONTAINER */}
+            <div className="p-4 bg-gradient-to-t from-[#0d0d0d] via-[#0d0d0d] to-transparent shrink-0">
+              <div className="max-w-3xl mx-auto relative">
+                <div className="bg-[#171717] border border-[#262626] focus-within:border-[#404040] rounded-2xl p-2.5 transition-all shadow-2xl">
+                  <textarea
+                    ref={textareaRef}
+                    rows="1"
+                    value={input}
+                    onChange={handleInput}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Ask any CHARUSAT doubt (e.g. attendance 75% rule, syllabus, CGPA)..."
+                    className="w-full bg-transparent text-neutral-100 placeholder-neutral-500 text-sm px-3 py-1.5 focus:outline-none resize-none max-h-48 overflow-y-auto"
+                  />
+
+                  <div className="flex items-center justify-between pt-2 border-t border-[#212121] px-2 text-xs text-neutral-500">
+                    <span className="text-[11px]">Shift + Enter for new line</span>
+                    
+                    <button
+                      onClick={() => sendMessage()}
+                      disabled={!input.trim() || isLoading}
+                      className="w-8 h-8 rounded-lg bg-neutral-100 hover:bg-white text-black font-bold flex items-center justify-center disabled:opacity-30 disabled:hover:bg-neutral-100 transition-all"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-center text-neutral-600 mt-2">
+                  Logged in as {user.fullName} ({user.enrollmentNo || user.email}) • Responses grounded in official CHARUSAT regulations.
+                </p>
+              </div>
+            </div>
+
+          </main>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

@@ -38,11 +38,13 @@ export default function VerifyOTP() {
     const cleaned = value.replace(/\D/g, "");
     if (cleaned.length > 1) {
       const newDigits = [...digits];
-      for (let i = 0; i < 6; i++) {
-        if (index + i < 6 && cleaned[i]) {
-          newDigits[index + i] = cleaned[i]!;
-        }
-      }
+      // for (let i = 0; i < 6; i++) {
+      //   if (index + i < 6 && cleaned[i]) {
+      //     newDigits[index + i] = cleaned[i]!;
+      //   }
+      // }
+      let i = 0;
+      
       setDigits(newDigits);
       const nextIndex = Math.min(index + cleaned.length, 5);
       inputRefs.current[nextIndex]?.focus();
@@ -59,6 +61,7 @@ export default function VerifyOTP() {
       inputRefs.current[index + 1]?.focus();
     }
   };
+
 
   const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Backspace" && !digits[index] && index > 0) {

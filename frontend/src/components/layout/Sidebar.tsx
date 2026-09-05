@@ -20,7 +20,8 @@ import {
   Receipt, 
   Building2, 
   Hash,
-  ShieldCheck
+  ShieldCheck,
+  Database
 } from 'lucide-react';
 
 export type SidebarNavItem = {
@@ -102,6 +103,7 @@ export default function Sidebar({
             items: [
               { id: 'products', title: 'Product Catalog', path: '/management/products', icon: Boxes },
               { id: 'users', title: 'User Roles & Access', path: '/management/users', icon: ShieldCheck },
+              { id: 'knowledge-base', title: 'Knowledge Base', path: '/management/knowledge-base', icon: Database },
             ]
           }
         ];

@@ -39,7 +39,16 @@ const DEMO_ACCOUNTS = [
 ];
 
 function getRoleRedirect(role?: string, defaultRoute?: string): string {
-  if (defaultRoute && defaultRoute !== '/login') return defaultRoute;
+  // If a valid application portal route was provided, check it
+  if (defaultRoute && defaultRoute !== '/login') {
+    if (defaultRoute.startsWith('/sales') ||
+        defaultRoute.startsWith('/management') ||
+        defaultRoute.startsWith('/operations') ||
+        defaultRoute.startsWith('/customer')) {
+      return defaultRoute;
+    }
+  }
+
   switch (role) {
     case 'CUSTOMER': return '/customer/dashboard';
     case 'SALES_REP': return '/sales/dashboard';
@@ -47,6 +56,8 @@ function getRoleRedirect(role?: string, defaultRoute?: string): string {
     case 'FINANCE': return '/management/approvals';
     case 'ADMIN': return '/management/dashboard';
     case 'OPERATIONS': return '/operations/dashboard';
+    case 'MANAGER_ADMIN': return '/management/dashboard';
+    case 'OPS_FINANCE': return '/operations/dashboard';
     default: return '/sales/dashboard';
   }
 }

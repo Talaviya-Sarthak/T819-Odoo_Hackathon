@@ -143,3 +143,88 @@
     border-color: hsl(var(--border)) !important;
   }
 }
+
+/* ─── Chatbot Markdown Typography & Table Styling ───────────────────────────── */
+.chatbot-markdown h1,
+.chatbot-markdown h2,
+.chatbot-markdown h3,
+.chatbot-markdown h4 {
+  color: #ffffff;
+  font-weight: 600;
+  margin-top: 0.85rem;
+  margin-bottom: 0.45rem;
+  line-height: 1.3;
+}
+.chatbot-markdown h1 { font-size: 1.05rem; }
+.chatbot-markdown h2 { font-size: 0.95rem; }
+.chatbot-markdown h3 { font-size: 0.90rem; }
+
+.chatbot-markdown p {
+  margin-bottom: 0.55rem;
+  line-height: 1.55;
+}
+.chatbot-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.chatbot-markdown ul {
+  list-style-type: disc;
+  padding-left: 1.15rem;
+  margin-bottom: 0.6rem;
+}
+.chatbot-markdown ol {
+  list-style-type: decimal;
+  padding-left: 1.15rem;
+  margin-bottom: 0.6rem;
+}
+.chatbot-markdown li {
+  margin-bottom: 0.35rem;
+  line-height: 1.45;
+}
+.chatbot-markdown li:last-child {
+  margin-bottom: 0;
+}
+
+.chatbot-markdown strong {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.chatbot-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 11.5px;
+  background-color: rgba(9, 9, 11, 0.6);
+  border: 1px solid rgba(63, 63, 70, 0.4);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+.chatbot-markdown th {
+  background-color: rgba(24, 24, 27, 0.95);
+  color: #f4f4f5;
+  font-weight: 600;
+  text-align: left;
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px solid rgba(63, 63, 70, 0.6);
+}
+.chatbot-markdown td {
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px solid rgba(63, 63, 70, 0.25);
+  color: #d4d4d8;
+}
+.chatbot-markdown tr:last-child td {
+  border-bottom: none;
+}
+.chatbot-markdown tr:nth-child(even) {
+  background-color: rgba(24, 24, 27, 0.35);
+}
+
+.chatbot-markdown blockquote {
+  border-left: 3px solid rgba(255, 255, 255, 0.3);
+  padding-left: 0.75rem;
+  margin: 0.6rem 0;
+  color: #a1a1aa;
+  font-style: italic;
+}
+

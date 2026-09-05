@@ -43,8 +43,9 @@ export async function apiRequest<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const token = localStorage.getItem('accessToken');
+  const isFormData = options.body instanceof FormData;
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(options.headers as Record<string, string>),
   };
 
@@ -130,4 +131,11 @@ export async function apiPatch<T>(endpoint: string, body?: unknown): Promise<T> 
 
 export async function apiDelete<T>(endpoint: string): Promise<T> {
   return apiRequest<T>(endpoint, { method: 'DELETE' });
+}
+
+export async function apiUpload<T>(endpoint: string, formData: FormData): Promise<T> {
+  return apiRequest<T>(endpoint, {
+    method: 'POST',
+    body: formData,
+  });
 }
