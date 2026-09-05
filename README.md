@@ -1136,6 +1136,6 @@ For support and questions:
 
 ## Acknowledgments
 
-- Built for Odoo Hackathon 2024
+- Built for Odoo Hackathon 2026
 - Inspired by real-world B2B sales operations challenges
 - Designed with production-ready architecture patterns
