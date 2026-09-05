@@ -341,10 +341,11 @@ async function main() {
   console.log('Creating warehouses...');
   await prisma.warehouse.upsert({
     where: { id: '00000000-0000-0000-0000-000000000001' },
-    update: { name: 'Ahmedabad Warehouse', location: 'Ahmedabad, Gujarat, India', active: true },
+    update: { name: 'Ahmedabad Warehouse', code: 'WH-AMD-01', location: 'Ahmedabad, Gujarat, India', active: true },
     create: {
       id: '00000000-0000-0000-0000-000000000001',
       name: 'Ahmedabad Warehouse',
+      code: 'WH-AMD-01',
       location: 'Ahmedabad, Gujarat, India',
       active: true,
     },
@@ -352,14 +353,45 @@ async function main() {
 
   await prisma.warehouse.upsert({
     where: { id: '00000000-0000-0000-0000-000000000002' },
-    update: { name: 'Vadodara Warehouse', location: 'Vadodara, Gujarat, India', active: true },
+    update: { name: 'Vadodara Warehouse', code: 'WH-BDQ-01', location: 'Vadodara, Gujarat, India', active: true },
     create: {
       id: '00000000-0000-0000-0000-000000000002',
       name: 'Vadodara Warehouse',
+      code: 'WH-BDQ-01',
       location: 'Vadodara, Gujarat, India',
       active: true,
     },
   });
+
+  // ─── 6b. Warehouse Stocks (Multi-Warehouse Inventory) ─────────
+  console.log('Seeding warehouse inventory stocks...');
+  const laptopProd = await prisma.product.findUnique({ where: { sku: 'HW-LAPTOP-001' } });
+  const monitorProd = await prisma.product.findUnique({ where: { sku: 'HW-MONITOR-001' } });
+  const dockProd = await prisma.product.findUnique({ where: { sku: 'HW-DOCK-001' } });
+  const mouseProd = await prisma.product.findUnique({ where: { sku: 'AC-MOUSE-001' } });
+  const keyboardProd = await prisma.product.findUnique({ where: { sku: 'AC-KEYBOARD-001' } });
+
+  const stockSeed = [
+    // Ahmedabad Warehouse
+    { warehouseId: '00000000-0000-0000-0000-000000000001', productId: laptopProd.id, quantity: 6, reservedQty: 0, reorderLevel: 5 },
+    { warehouseId: '00000000-0000-0000-0000-000000000001', productId: dockProd.id, quantity: 20, reservedQty: 0, reorderLevel: 5 },
+    { warehouseId: '00000000-0000-0000-0000-000000000001', productId: monitorProd.id, quantity: 15, reservedQty: 0, reorderLevel: 5 },
+    { warehouseId: '00000000-0000-0000-0000-000000000001', productId: mouseProd.id, quantity: 50, reservedQty: 0, reorderLevel: 10 },
+    { warehouseId: '00000000-0000-0000-0000-000000000001', productId: keyboardProd.id, quantity: 40, reservedQty: 0, reorderLevel: 10 },
+
+    // Vadodara Warehouse
+    { warehouseId: '00000000-0000-0000-0000-000000000002', productId: laptopProd.id, quantity: 0, reservedQty: 0, reorderLevel: 5 },
+    { warehouseId: '00000000-0000-0000-0000-000000000002', productId: dockProd.id, quantity: 10, reservedQty: 0, reorderLevel: 5 },
+    { warehouseId: '00000000-0000-0000-0000-000000000002', productId: monitorProd.id, quantity: 10, reservedQty: 0, reorderLevel: 5 },
+  ];
+
+  for (const s of stockSeed) {
+    await prisma.warehouseStock.upsert({
+      where: { warehouseId_productId: { warehouseId: s.warehouseId, productId: s.productId } },
+      update: s,
+      create: s,
+    });
+  }
 
   // ─── 7. Subscription Plans ───────────────────────────────────
   console.log('Creating subscription plans...');

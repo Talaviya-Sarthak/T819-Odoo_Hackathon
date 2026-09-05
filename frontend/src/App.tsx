@@ -39,6 +39,8 @@ import Users from './pages/management/Users';
 import OperationsDashboard from './pages/operations/Dashboard';
 import OperationsOrders from './pages/operations/Orders';
 import Fulfillment from './pages/operations/Fulfillment';
+import Inventory from './pages/operations/Inventory';
+import Backorders from './pages/operations/Backorders';
 import OperationsWarehouses from './pages/operations/Warehouses';
 import Invoices from './pages/operations/Invoices';
 import Payments from './pages/operations/Payments';
@@ -117,7 +119,7 @@ function App() {
             <Route
               path="/operations"
               element={
-                <RoleRoute allowedRoles={['OPERATIONS', 'FINANCE', 'ADMIN', 'OPS_FINANCE']}>
+                <RoleRoute allowedRoles={['OPERATIONS', 'FINANCE', 'ADMIN', 'OPS_FINANCE', 'MANAGER_ADMIN']}>
                   <AppShell portalName="Operations & Finance Portal" />
                 </RoleRoute>
               }
@@ -125,6 +127,8 @@ function App() {
               <Route path="dashboard" element={<OperationsDashboard />} />
               <Route path="orders" element={<OperationsOrders />} />
               <Route path="fulfillment" element={<Fulfillment />} />
+              <Route path="inventory" element={<Inventory />} />
+              <Route path="backorders" element={<Backorders />} />
               <Route path="warehouses" element={<OperationsWarehouses />} />
               <Route path="invoices" element={<Invoices />} />
               <Route path="payments" element={<Payments />} />

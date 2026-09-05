@@ -3,10 +3,113 @@
 const billingService = require('./billing.service');
 const { sendSuccess } = require('../../utils/response');
 
-exports.getQuotationBilling = async (req, res, next) => {
+// ─── INVOICES ───────────────────────────────────────────────────────
+
+exports.createInvoice = async (req, res, next) => {
   try {
-    const result = await billingService.getQuotationBilling(req.params.id);
-    sendSuccess(res, 200, 'Billing info fetched', { billing: result });
+    const { salesOrderId, scheduleId } = req.body;
+    let result;
+    if (salesOrderId) {
+      result = await billingService.createInvoiceFromOrder(salesOrderId, req.user);
+    } else if (scheduleId) {
+      result = await billingService.createInvoiceFromSchedule(scheduleId, req.user);
+    } else {
+      throw new Error('Either salesOrderId or scheduleId is required to generate an invoice');
+    }
+    sendSuccess(res, 201, 'Invoice generated', { invoice: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.createInvoiceFromOrder = async (req, res, next) => {
+  try {
+    const orderId = req.params.orderId || req.body.salesOrderId;
+    const result = await billingService.createInvoiceFromOrder(orderId, req.user);
+    sendSuccess(res, 201, 'Invoice created from sales order', { invoice: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.createInvoiceFromSchedule = async (req, res, next) => {
+  try {
+    const scheduleId = req.params.scheduleId || req.body.scheduleId;
+    const result = await billingService.createInvoiceFromSchedule(scheduleId, req.user);
+    sendSuccess(res, 201, 'Invoice created from billing schedule', { invoice: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.listInvoices = async (req, res, next) => {
+  try {
+    const result = await billingService.listInvoices({ ...req.query, user: req.user });
+    sendSuccess(res, 200, 'Invoices fetched', { invoices: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.getInvoiceById = async (req, res, next) => {
+  try {
+    const result = await billingService.getInvoiceById(req.params.id, req.user);
+    sendSuccess(res, 200, 'Invoice fetched', { invoice: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── PAYMENTS ───────────────────────────────────────────────────────
+
+exports.recordPayment = async (req, res, next) => {
+  try {
+    const invoiceId = req.params.id || req.body.invoiceId;
+    const result = await billingService.recordPayment({
+      invoiceId,
+      amount: req.body.amount,
+      paymentMethod: req.body.paymentMethod || req.body.method,
+      reference: req.body.reference,
+    }, req.user);
+    sendSuccess(res, 201, 'Payment recorded successfully', result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.listPayments = async (req, res, next) => {
+  try {
+    const result = await billingService.listPayments({ ...req.query, user: req.user });
+    sendSuccess(res, 200, 'Payments fetched', { payments: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.getPaymentById = async (req, res, next) => {
+  try {
+    const result = await billingService.getPaymentById(req.params.id, req.user);
+    sendSuccess(res, 200, 'Payment fetched', { payment: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── SUBSCRIPTIONS ──────────────────────────────────────────────────
+
+exports.getPlans = async (req, res, next) => {
+  try {
+    const result = await billingService.getPlans();
+    sendSuccess(res, 200, 'Subscription plans fetched', { plans: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.listSubscriptions = async (req, res, next) => {
+  try {
+    const result = await billingService.listSubscriptions({ ...req.query, user: req.user });
+    sendSuccess(res, 200, 'Subscriptions fetched', { subscriptions: result });
   } catch (err) {
     next(err);
   }
@@ -14,7 +117,7 @@ exports.getQuotationBilling = async (req, res, next) => {
 
 exports.getSubscription = async (req, res, next) => {
   try {
-    const result = await billingService.getSubscription(req.params.id);
+    const result = await billingService.getSubscription(req.params.id, req.user);
     sendSuccess(res, 200, 'Subscription fetched', { subscription: result });
   } catch (err) {
     next(err);
@@ -23,35 +126,44 @@ exports.getSubscription = async (req, res, next) => {
 
 exports.getBillingSchedule = async (req, res, next) => {
   try {
-    const result = await billingService.getBillingSchedule(req.params.id);
+    const result = await billingService.getBillingSchedule(req.params.id, req.user);
     sendSuccess(res, 200, 'Billing schedule fetched', { schedule: result });
   } catch (err) {
     next(err);
   }
 };
 
-exports.createSubscription = async (req, res, next) => {
+exports.listBillingSchedules = async (req, res, next) => {
   try {
-    const result = await billingService.createSubscription(req.body);
-    sendSuccess(res, 201, 'Subscription created', { subscription: result });
+    const result = await billingService.listBillingSchedules({ ...req.query, user: req.user });
+    sendSuccess(res, 200, 'Billing schedules fetched', { schedules: result });
   } catch (err) {
     next(err);
   }
 };
 
-exports.createInvoice = async (req, res, next) => {
+exports.pauseSubscription = async (req, res, next) => {
   try {
-    const result = await billingService.createInvoice(req.body);
-    sendSuccess(res, 201, 'Invoice created', { invoice: result });
+    const result = await billingService.pauseSubscription(req.params.id, req.user);
+    sendSuccess(res, 200, 'Subscription paused', { subscription: result });
   } catch (err) {
     next(err);
   }
 };
 
-exports.recordPayment = async (req, res, next) => {
+exports.resumeSubscription = async (req, res, next) => {
   try {
-    const result = await billingService.recordPayment(req.body);
-    sendSuccess(res, 201, 'Payment recorded', { payment: result });
+    const result = await billingService.resumeSubscription(req.params.id, req.user);
+    sendSuccess(res, 200, 'Subscription resumed', { subscription: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.cancelSubscription = async (req, res, next) => {
+  try {
+    const result = await billingService.cancelSubscription(req.params.id, req.user);
+    sendSuccess(res, 200, 'Subscription cancelled', { subscription: result });
   } catch (err) {
     next(err);
   }

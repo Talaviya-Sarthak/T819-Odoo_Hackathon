@@ -1,37 +1,57 @@
 import { useState, useEffect } from 'react';
+import { warehousesApi, inventoryApi } from '../../api';
 import { useToast } from '../../components/Toast';
-import { apiGet } from '../../services/api';
-import type { Warehouse, WarehouseStock } from '../../types';
 
-interface WarehouseWithStock extends Warehouse {
-  stock: WarehouseStock[];
-  expanded: boolean;
+interface StockItem {
+  id: string;
+  quantity: number;
+  reservedQty: number;
+  reorderLevel: number;
+  product?: { name: string; sku: string; costPrice?: number | string };
+}
+
+interface WarehouseWithStocks {
+  id: string;
+  name: string;
+  code: string;
+  location?: string;
+  address?: string;
+  active: boolean;
+  stocks: StockItem[];
 }
 
 export default function Warehouses() {
-  const [warehouses, setWarehouses] = useState<WarehouseWithStock[]>([]);
+  const [warehouses, setWarehouses] = useState<WarehouseWithStocks[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Create Warehouse Modal
+  const [modalOpen, setModalOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [location, setLocation] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
   const { toast } = useToast();
 
   useEffect(() => {
-    loadWarehouses();
+    loadData();
   }, []);
 
-  async function loadWarehouses() {
+  async function loadData() {
     try {
       setLoading(true);
-      const res = await apiGet<{ warehouses: Warehouse[] }>('/api/warehouses');
-      const withStock: WarehouseWithStock[] = await Promise.all(
-        res.warehouses.map(async (w) => {
+      const whList = await warehousesApi.getAll();
+      const withStocks: WarehouseWithStocks[] = await Promise.all(
+        whList.map(async (w: any) => {
           try {
-            const stockRes = await apiGet<{ stocks: WarehouseStock[] }>(`/api/warehouses/${w.id}/stock`);
-            return { ...w, stock: stockRes.stocks || [], expanded: false };
+            const stocks = await inventoryApi.getByWarehouse(w.id);
+            return { ...w, stocks: stocks || [] };
           } catch {
-            return { ...w, stock: [], expanded: false };
+            return { ...w, stocks: [] };
           }
         })
       );
-      setWarehouses(withStock);
+      setWarehouses(withStocks);
     } catch {
       toast('Failed to load warehouses', 'error');
     } finally {
@@ -39,91 +59,238 @@ export default function Warehouses() {
     }
   }
 
-  function toggleExpand(index: number) {
-    setWarehouses((prev) =>
-      prev.map((w, i) => (i === index ? { ...w, expanded: !w.expanded } : w))
-    );
-  }
+  async function handleCreateWarehouse(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name || !code) return;
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Warehouses</h1>
-          <p className="text-sm text-gray-500">Loading warehouse data...</p>
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-500">
-          Loading...
-        </div>
-      </div>
-    );
+    try {
+      setSubmitting(true);
+      await warehousesApi.create({ name, code, location });
+      toast('Warehouse created successfully', 'success');
+      setModalOpen(false);
+      setName('');
+      setCode('');
+      setLocation('');
+      await loadData();
+    } catch (err: any) {
+      toast(err?.message || 'Failed to create warehouse', 'error');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Warehouses</h1>
-        <p className="text-sm text-gray-500">View warehouse inventory and stock levels</p>
+    <div className="space-y-8 animate-fadeIn">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
+            <span className="p-2 rounded-xl bg-gradient-to-br from-indigo-500 to-slate-700 text-white shadow-lg shadow-indigo-500/30">
+              🏭
+            </span>
+            Warehouse Infrastructure & Locations
+          </h1>
+          <p className="mt-1 text-sm text-slate-400">
+            Multi-facility management, physical distribution hubs, and dedicated site inventory counts.
+          </p>
+        </div>
+
+        <button
+          onClick={() => setModalOpen(true)}
+          className="px-4 py-2.5 rounded-xl font-bold text-sm text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-2 self-start sm:self-auto"
+        >
+          <span>➕</span> Add Warehouse
+        </button>
       </div>
 
-      {warehouses.length === 0 ? (
-        <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-500">
-          No warehouses found.
+      {loading ? (
+        <div className="py-20 text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent"></div>
+          <p className="mt-3 text-sm text-slate-400">Loading warehouses & stock levels...</p>
+        </div>
+      ) : warehouses.length === 0 ? (
+        <div className="py-20 text-center rounded-2xl border border-slate-800 bg-slate-950/80">
+          <span className="text-4xl">🏭</span>
+          <p className="mt-3 text-base font-semibold text-slate-200">No warehouses configured</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {warehouses.map((warehouse, index) => (
-            <div key={warehouse.id} className="rounded-lg border border-gray-200 bg-white">
-              <button
-                onClick={() => toggleExpand(index)}
-                className="flex w-full items-center justify-between p-6 text-left"
-              >
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{warehouse.name}</p>
-                  <p className="text-xs text-gray-500">
-                    {warehouse.city || 'No city'} · {warehouse.stock.length} products
-                  </p>
-                </div>
-                <svg
-                  className={`h-5 w-5 text-gray-400 transition-transform ${warehouse.expanded ? 'rotate-180' : ''}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
+        <div className="space-y-6">
+          {warehouses.map((wh) => {
+            const totalUnits = wh.stocks.reduce((sum, s) => sum + s.quantity, 0);
+            const totalReserved = wh.stocks.reduce((sum, s) => sum + s.reservedQty, 0);
+            const totalAvailable = Math.max(0, totalUnits - totalReserved);
+            const totalValuation = wh.stocks.reduce((sum, s) => sum + s.quantity * Number(s.product?.costPrice || 0), 0);
 
-              {warehouse.expanded && (
-                <div className="border-t border-gray-200 px-6 pb-6">
-                  {warehouse.stock.length === 0 ? (
-                    <p className="py-4 text-sm text-gray-500">No stock data available.</p>
+            return (
+              <div
+                key={wh.id}
+                className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-950/90 shadow-2xl backdrop-blur-xl"
+              >
+                {/* Warehouse Header Bar */}
+                <div className="p-6 border-b border-slate-800/80 bg-gradient-to-r from-slate-900/90 to-slate-950 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">🏢</span>
+                      <h2 className="text-xl font-black text-white">{wh.name}</h2>
+                      <span className="font-mono text-xs font-bold px-2.5 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                        {wh.code}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Location: {wh.location || 'Gujarat, India'} · ID: <span className="font-mono text-slate-500">{wh.id}</span>
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-4 text-xs font-medium">
+                    <div className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800">
+                      <span className="text-slate-400">On-Hand: </span>
+                      <span className="font-bold text-white font-mono">{totalUnits}</span>
+                    </div>
+                    <div className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800">
+                      <span className="text-slate-400">Reserved: </span>
+                      <span className="font-bold text-amber-400 font-mono">{totalReserved}</span>
+                    </div>
+                    <div className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800">
+                      <span className="text-slate-400">Available: </span>
+                      <span className="font-bold text-emerald-400 font-mono">{totalAvailable}</span>
+                    </div>
+                    <div className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800">
+                      <span className="text-slate-400">Valuation: </span>
+                      <span className="font-bold text-cyan-400 font-mono">${totalValuation.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stock Table */}
+                <div className="overflow-x-auto">
+                  {wh.stocks.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-slate-500">
+                      No stock currently allocated to this warehouse.
+                    </div>
                   ) : (
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-gray-200 bg-gray-50">
-                          <th className="px-4 py-3 text-left font-medium text-gray-900">Product</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-900">Available</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-900">Reserved</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-900">Reorder Level</th>
+                    <table className="w-full text-left text-xs text-slate-300">
+                      <thead className="bg-slate-900/60 text-slate-400 uppercase font-semibold border-b border-slate-800/80">
+                        <tr>
+                          <th className="px-6 py-3">Product Name</th>
+                          <th className="px-6 py-3">SKU</th>
+                          <th className="px-6 py-3 text-center">On-Hand</th>
+                          <th className="px-6 py-3 text-center">Reserved</th>
+                          <th className="px-6 py-3 text-center">Available</th>
+                          <th className="px-6 py-3 text-right">Unit Cost</th>
                         </tr>
                       </thead>
-                      <tbody>
-                        {warehouse.stock.map((s) => (
-                          <tr key={s.id} className="border-b border-gray-100 last:border-0">
-                            <td className="px-4 py-3 text-gray-900">{s.product_name || s.product_id}</td>
-                            <td className="px-4 py-3 text-gray-900">{s.available_quantity}</td>
-                            <td className="px-4 py-3 text-gray-900">{s.reserved_quantity}</td>
-                            <td className="px-4 py-3 text-gray-900">{s.quantity - s.reserved_quantity}</td>
-                          </tr>
-                        ))}
+                      <tbody className="divide-y divide-slate-800/40">
+                        {wh.stocks.map((stock) => {
+                          const avail = Math.max(0, stock.quantity - stock.reservedQty);
+                          return (
+                            <tr key={stock.id} className="hover:bg-slate-900/40">
+                              <td className="px-6 py-3 font-semibold text-white">
+                                {stock.product?.name || 'Item'}
+                              </td>
+                              <td className="px-6 py-3 font-mono text-indigo-400">
+                                {stock.product?.sku}
+                              </td>
+                              <td className="px-6 py-3 text-center font-mono font-bold text-white">
+                                {stock.quantity}
+                              </td>
+                              <td className="px-6 py-3 text-center font-mono font-bold text-amber-400">
+                                {stock.reservedQty}
+                              </td>
+                              <td className="px-6 py-3 text-center font-mono font-extrabold text-emerald-400">
+                                {avail}
+                              </td>
+                              <td className="px-6 py-3 text-right font-mono text-slate-400">
+                                ${Number(stock.product?.costPrice || 0).toFixed(2)}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   )}
                 </div>
-              )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Add Warehouse Modal */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl text-slate-200">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <span>🏭</span> Add New Warehouse
+              </h3>
+              <button
+                onClick={() => setModalOpen(false)}
+                className="text-slate-400 hover:text-white text-lg font-bold"
+              >
+                ✕
+              </button>
             </div>
-          ))}
+
+            <form onSubmit={handleCreateWarehouse} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
+                  Warehouse Name
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Surat Fulfillment Hub"
+                  className="w-full px-4 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
+                  Warehouse Code
+                </label>
+                <input
+                  type="text"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.toUpperCase())}
+                  placeholder="e.g. WH-STV-01"
+                  className="w-full px-4 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
+                  Location / City
+                </label>
+                <input
+                  type="text"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="e.g. Surat, Gujarat"
+                  className="w-full px-4 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setModalOpen(false)}
+                  className="px-4 py-2 text-sm font-medium rounded-xl text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-5 py-2 text-sm font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 transition-all disabled:opacity-50"
+                >
+                  {submitting ? 'Creating...' : 'Create Warehouse'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
