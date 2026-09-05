@@ -129,6 +129,12 @@ export default function QuoteBuilder() {
 
   // Selected customer object
   const currentCustomer = customers.find((c) => c.id === selectedCustomerId);
+  const getTierLabel = (tier: any): string => {
+    if (!tier) return 'Standard';
+    if (typeof tier === 'object' && tier.name) return String(tier.name);
+    if (typeof tier === 'string') return tier;
+    return 'Standard';
+  };
 
   // Line item handlers
   const handleProductChange = (index: number, productId: string) => {
@@ -420,7 +426,7 @@ export default function QuoteBuilder() {
               <option value="">-- Choose Customer --</option>
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} ({c.company || c.email}) - {c.tier} Tier
+                  {c.name} ({c.company || c.email}) - {getTierLabel(c.tier)} Tier
                 </option>
               ))}
             </select>
@@ -432,11 +438,11 @@ export default function QuoteBuilder() {
             </label>
             <div className="flex h-10 items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm">
               <span className="font-semibold text-slate-800">
-                {currentCustomer ? `${currentCustomer.name} (${currentCustomer.tier} Tier)` : 'No customer selected'}
+                {currentCustomer ? `${currentCustomer.name} (${getTierLabel(currentCustomer.tier)} Tier)` : 'No customer selected'}
               </span>
               {currentCustomer && (
                 <span className="rounded-md bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-800">
-                  {currentCustomer.tier}
+                  {getTierLabel(currentCustomer.tier)}
                 </span>
               )}
             </div>
