@@ -137,14 +137,21 @@ async function checkQuotationDiscounts(quotationId) {
 
   return {
     allowed: reportAllowed,
+    allowedDiscount: reportAllowed,
     current: reportCurrent,
+    requestedDiscount: reportCurrent,
     excess: maxExcess,
+    excessDiscount: maxExcess,
     affectedLines,
     risk: riskResult.riskLevel,
+    riskLevel: riskResult.riskLevel,
     riskScore: riskResult.riskScore,
     approvalRequired: riskResult.approvalRequired,
+    requiresApproval: riskResult.approvalRequired,
     requiredRoles: riskResult.requiredRoles,
+    approvalRoles: riskResult.requiredRoles,
     reason: riskResult.reasons.join('. '),
+    reasons: riskResult.reasons,
     lineDetails,
     summary: {
       quotationNumber: quotation.quotationNumber,

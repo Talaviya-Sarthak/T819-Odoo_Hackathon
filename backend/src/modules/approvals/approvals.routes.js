@@ -6,7 +6,9 @@ const approvalsController = require('./approvals.controller');
 const { authenticate } = require('../../middlewares/auth.middleware');
 
 router.get('/', authenticate, approvalsController.list);
+router.get('/pending', authenticate, approvalsController.getPending);
 router.get('/:id', authenticate, approvalsController.getById);
+router.get('/:id/history', authenticate, approvalsController.getHistory);
 router.post('/:id/approve', authenticate, approvalsController.approve);
 router.post('/:id/reject', authenticate, approvalsController.reject);
 router.post('/:id/return', authenticate, approvalsController.returnForRevision);

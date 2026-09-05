@@ -6,7 +6,25 @@ const { sendSuccess } = require('../../utils/response');
 exports.list = async (req, res, next) => {
   try {
     const result = await approvalsService.list({ ...req.query, user: req.user });
-    sendSuccess(res, 200, 'Approval requests fetched', { approvalRequests: result });
+    sendSuccess(res, 200, 'Approval requests fetched', { approvals: result, approvalRequests: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.getPending = async (req, res, next) => {
+  try {
+    const result = await approvalsService.list({ user: req.user, status: 'PENDING' });
+    sendSuccess(res, 200, 'Pending approvals fetched', { approvals: result, approvalRequests: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.getHistory = async (req, res, next) => {
+  try {
+    const result = await approvalsService.getById(req.params.id, req.user);
+    sendSuccess(res, 200, 'Approval history fetched', { history: result.history || [] });
   } catch (err) {
     next(err);
   }

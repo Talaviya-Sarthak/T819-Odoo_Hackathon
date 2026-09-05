@@ -15,7 +15,10 @@ exports.getRecommendations = async (req, res, next) => {
 exports.addToQuotation = async (req, res, next) => {
   try {
     const result = await recommendationsService.addToQuotation(req.params.id);
-    sendSuccess(res, 200, 'Recommendation added to quotation', { recommendation: result });
+    sendSuccess(res, 200, 'Recommendation added to quotation', { 
+      recommendation: result, 
+      quotation: result.quotation 
+    });
   } catch (err) {
     next(err);
   }

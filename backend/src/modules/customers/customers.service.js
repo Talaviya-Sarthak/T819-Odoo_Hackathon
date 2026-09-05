@@ -5,35 +5,42 @@ const { logAudit } = require('../../services/audit.service');
 const prisma = require('../../database/prisma');
 
 exports.list = async ({ user, tierId, search, limit = 50, offset = 0 } = {}) => {
-  const where = {};
+  const conditions = [];
 
   // Customer role can ONLY view their own customer record
   if (user && user.role === 'CUSTOMER') {
     if (user.customer_id) {
-      where.id = user.customer_id;
+      conditions.push({ id: user.customer_id });
     } else {
       const cust = await prisma.customer.findFirst({
         where: { OR: [{ email: user.email }, { ownerId: user.id }] },
       });
-      if (cust) where.id = cust.id;
+      if (cust) conditions.push({ id: cust.id });
       else return [];
     }
   } else if (user && user.role === 'SALES_REP') {
-    // Sales rep only sees assigned customers by default
-    where.OR = [
-      { salesRepId: user.id },
-      { ownerId: user.id },
-    ];
+    // Sales rep sees assigned customers or unassigned
+    conditions.push({
+      OR: [
+        { salesRepId: user.id },
+        { ownerId: user.id },
+        { salesRepId: null },
+      ],
+    });
   }
 
-  if (tierId) where.tierId = tierId;
+  if (tierId) conditions.push({ tierId });
   if (search) {
-    where.OR = [
-      { name: { contains: search, mode: 'insensitive' } },
-      { company: { contains: search, mode: 'insensitive' } },
-      { email: { contains: search, mode: 'insensitive' } },
-    ];
+    conditions.push({
+      OR: [
+        { name: { contains: search, mode: 'insensitive' } },
+        { company: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+      ],
+    });
   }
+
+  const where = conditions.length > 0 ? { AND: conditions } : {};
 
   return prisma.customer.findMany({
     where,
