@@ -70,10 +70,10 @@ export default function AuthBackground({ children, activeTab = "login", onTabCha
   }, []);
 
   return (
-    <section className="fixed inset-0 bg-zinc-950 text-zinc-50 overflow-hidden h-screen w-screen flex flex-col">
+    <section className="fixed inset-0 bg-background text-foreground overflow-hidden h-screen w-screen flex flex-col">
       <style>{`
         .accent-lines{position:absolute;inset:0;pointer-events:none;opacity:.7}
-        .hline,.vline{position:absolute;background:#27272a;will-change:transform,opacity}
+        .hline,.vline{position:absolute;background:hsl(var(--border));will-change:transform,opacity}
         .hline{left:0;right:0;height:1px;transform:scaleX(0);transform-origin:50% 50%;animation:drawX .8s cubic-bezier(.22,.61,.36,1) forwards}
         .vline{top:0;bottom:0;width:1px;transform:scaleY(0);transform-origin:50% 0%;animation:drawY .9s cubic-bezier(.22,.61,.36,1) forwards}
         .hline:nth-child(1){top:18%;animation-delay:.12s}
@@ -126,8 +126,8 @@ export default function AuthBackground({ children, activeTab = "login", onTabCha
       />
 
       {/* Header */}
-      <header className="absolute left-0 right-0 top-0 flex items-center justify-between px-6 py-4 border-b border-zinc-800/80 z-10">
-          <span className="text-xs tracking-[0.14em] uppercase text-zinc-400 font-bold">
+      <header className="absolute left-0 right-0 top-0 flex items-center justify-between px-6 py-4 border-b border-border/60 z-10">
+          <span className="text-xs tracking-[0.14em] uppercase text-muted-foreground font-bold">
             Deal360
           </span>
           

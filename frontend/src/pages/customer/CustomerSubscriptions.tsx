@@ -60,9 +60,25 @@ export default function CustomerSubscriptions() {
 
   return (
     <div className="space-y-6">
+<<<<<<< Updated upstream
       <div>
         <h1 className="text-2xl font-bold text-gray-900">My Subscriptions</h1>
         <p className="text-sm text-gray-500">View your active subscriptions</p>
+=======
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">My Subscriptions</h1>
+          <p className="text-sm text-muted-foreground">View your active subscriptions and recurring services</p>
+        </div>
+        <button
+          onClick={loadSubscriptions}
+          disabled={loading}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-foreground bg-card border border-border/50 rounded-lg hover:bg-white/5 transition-colors shadow-xs disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
+>>>>>>> Stashed changes
       </div>
 
       <DataTable
