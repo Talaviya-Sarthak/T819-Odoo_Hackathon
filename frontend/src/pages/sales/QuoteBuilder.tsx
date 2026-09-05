@@ -9,6 +9,7 @@ import {
   type RecommendationItem 
 } from '../../api';
 import type { Customer, Product, Quotation } from '../../types';
+import { useToast } from '../../components/Toast';
 import { 
   Plus, 
   Trash2, 
@@ -18,11 +19,9 @@ import {
   CheckCircle2, 
   Sparkles, 
   ArrowLeft, 
-  AlertTriangle,
   RefreshCw,
   TrendingUp,
-  DollarSign,
-  PackageCheck
+  DollarSign
 } from 'lucide-react';
 
 interface BuilderLine {
@@ -39,6 +38,7 @@ interface BuilderLine {
 export default function QuoteBuilder() {
   const { id } = useParams<{ id?: string }>();
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   const [quotation, setQuotation] = useState<Quotation | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -57,7 +57,6 @@ export default function QuoteBuilder() {
   const [governanceResult, setGovernanceResult] = useState<DiscountCheckResult | null>(null);
   const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
   const [addingRecId, setAddingRecId] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // 1. Initial Reference Data Loading
   useEffect(() => {
@@ -73,6 +72,7 @@ export default function QuoteBuilder() {
         setProducts(finalProd);
       } catch (err: any) {
         console.error('Failed to load references:', err);
+        toast.fail(err.message || 'Failed to load catalog data');
       }
     }
     loadRefs();
@@ -109,10 +109,9 @@ export default function QuoteBuilder() {
           );
         }
 
-        // Load recommendations for this quote
         loadRecommendations(id!);
       } catch (err: any) {
-        setStatusMessage({ type: 'error', text: err.message || 'Failed to load quotation' });
+        toast.fail(err.message || 'Failed to load quotation');
       } finally {
         setLoading(false);
       }
@@ -206,19 +205,17 @@ export default function QuoteBuilder() {
   // Save Quotation Draft
   const handleSave = async (): Promise<string | null> => {
     if (!selectedCustomerId) {
-      setStatusMessage({ type: 'error', text: 'Please select a customer first.' });
+      toast.warning('Please select a customer first.', 'Validation');
       return null;
     }
 
     const validLines = lines.filter((l) => l.productId);
     if (validLines.length === 0) {
-      setStatusMessage({ type: 'error', text: 'Please add at least one product line.' });
+      toast.warning('Please add at least one valid product line.', 'Validation');
       return null;
     }
 
     setSaving(true);
-    setStatusMessage(null);
-
     try {
       let savedQuote: Quotation;
 
@@ -228,7 +225,7 @@ export default function QuoteBuilder() {
           notes,
           validUntil,
         });
-        setStatusMessage({ type: 'success', text: 'Quotation draft updated successfully.' });
+        toast.success('Quotation draft updated successfully.', 'Draft Saved');
       } else {
         savedQuote = await quotationsApi.create({
           customerId: selectedCustomerId,
@@ -236,7 +233,7 @@ export default function QuoteBuilder() {
           notes,
           validUntil,
         });
-        setStatusMessage({ type: 'success', text: 'Quotation draft created successfully.' });
+        toast.success('Quotation draft created successfully.', 'Draft Created');
         navigate(`/sales/quote-builder/${savedQuote.id}`, { replace: true });
       }
 
@@ -244,7 +241,7 @@ export default function QuoteBuilder() {
       loadRecommendations(savedQuote.id);
       return savedQuote.id;
     } catch (err: any) {
-      setStatusMessage({ type: 'error', text: err.message || 'Failed to save quotation.' });
+      toast.fail(err.message || 'Failed to save quotation.');
       return null;
     } finally {
       setSaving(false);
@@ -266,8 +263,16 @@ export default function QuoteBuilder() {
     try {
       const result = await quotationsApi.checkDiscount(quoteId);
       setGovernanceResult(result);
+      if (result.requiresApproval) {
+        toast.warning(
+          `Discount of ${result.requestedDiscount}% requires ${result.approvalRoles.join(' & ')} approval.`,
+          'Approval Required'
+        );
+      } else {
+        toast.success(`Discount of ${result.requestedDiscount}% conforms to policy.`, 'Discount Approved');
+      }
     } catch (err: any) {
-      setStatusMessage({ type: 'error', text: err.message || 'Governance check failed.' });
+      toast.fail(err.message || 'Governance check failed.', 'Check Failed');
     } finally {
       setCheckingGovernance(false);
     }
@@ -289,14 +294,13 @@ export default function QuoteBuilder() {
       const { quotation: submittedQuote, governance } = await quotationsApi.submit(quoteId);
       setQuotation(submittedQuote);
       setGovernanceResult(governance);
-      setStatusMessage({
-        type: 'success',
-        text: submittedQuote.status === 'APPROVED'
-          ? 'Quotation automatically approved!'
-          : 'Quotation submitted for approval review.',
-      });
+      if (submittedQuote.status === 'APPROVED') {
+        toast.success('Quotation automatically approved!', 'Approval Success');
+      } else {
+        toast.warning('Quotation submitted. Pending approval review.', 'Approval Pending');
+      }
     } catch (err: any) {
-      setStatusMessage({ type: 'error', text: err.message || 'Submission failed.' });
+      toast.fail(err.message || 'Submission failed.', 'Submission Failed');
     } finally {
       setSaving(false);
     }
@@ -326,10 +330,10 @@ export default function QuoteBuilder() {
           );
         }
         loadRecommendations(id);
-        setStatusMessage({ type: 'success', text: `Added ${rec.product.name} to quotation.` });
+        toast.success(`Added ${rec.product.name} to quotation.`);
       }
     } catch (err: any) {
-      setStatusMessage({ type: 'error', text: err.message || 'Failed to add recommendation.' });
+      toast.fail(err.message || 'Failed to add recommendation.');
     } finally {
       setAddingRecId(null);
     }
@@ -340,7 +344,7 @@ export default function QuoteBuilder() {
   if (loading) {
     return (
       <div className="flex h-96 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
   }
@@ -352,15 +356,15 @@ export default function QuoteBuilder() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/sales/quotations')}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 transition-colors"
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/50 bg-card text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">
               {id ? `Quotation: ${(quotation as any)?.quotationNumber || (quotation as any)?.quotation_number || id.slice(0, 8)}` : 'Create Quotation'}
             </h1>
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-muted-foreground">
               Configure product lines, tiered pricing, and discount governance
             </p>
           </div>
@@ -371,16 +375,16 @@ export default function QuoteBuilder() {
           <button
             onClick={handleCheckDiscount}
             disabled={checkingGovernance || isLocked}
-            className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50 transition-colors"
+            className="inline-flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2 text-sm font-semibold text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-colors"
           >
-            <ShieldAlert className="h-4 w-4 text-amber-600" />
+            <ShieldAlert className="h-4 w-4 text-amber-400" />
             {checkingGovernance ? 'Checking Risk...' : 'Check Discount & Risk'}
           </button>
 
           <button
             onClick={handleSave}
             disabled={saving || isLocked}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors shadow-xs"
+            className="inline-flex items-center gap-2 rounded-lg border border-border/50 bg-card px-3.5 py-2 text-sm font-medium text-foreground hover:bg-white/5 disabled:opacity-50 transition-colors shadow-xs"
           >
             <Save className="h-4 w-4" />
             {saving ? 'Saving...' : 'Save Draft'}
@@ -389,7 +393,7 @@ export default function QuoteBuilder() {
           <button
             onClick={handleSubmit}
             disabled={saving || isLocked}
-            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
             <Send className="h-4 w-4" />
             Submit for Approval
@@ -397,33 +401,18 @@ export default function QuoteBuilder() {
         </div>
       </div>
 
-      {statusMessage && (
-        <div
-          className={`flex items-center justify-between rounded-lg p-4 text-sm font-medium ${
-            statusMessage.type === 'success'
-              ? 'border border-emerald-200 bg-emerald-50 text-emerald-800'
-              : 'border border-rose-200 bg-rose-50 text-rose-800'
-          }`}
-        >
-          <span>{statusMessage.text}</span>
-          <button onClick={() => setStatusMessage(null)} className="text-xs font-bold underline">
-            Dismiss
-          </button>
-        </div>
-      )}
-
       {/* Customer Header Details */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-xl border border-border/50 bg-card p-6 shadow-xs">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
               Select Customer
             </label>
             <select
               value={selectedCustomerId}
               onChange={(e) => setSelectedCustomerId(e.target.value)}
               disabled={isLocked}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-indigo-600 focus:outline-none disabled:bg-slate-100"
+              className="w-full rounded-lg border border-border/60 bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none disabled:opacity-50"
             >
               <option value="">-- Choose Customer --</option>
               {customers.map((c) => (
@@ -435,15 +424,15 @@ export default function QuoteBuilder() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
               Customer Tier & Status
             </label>
-            <div className="flex h-10 items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm">
-              <span className="font-semibold text-slate-800">
+            <div className="flex h-10 items-center justify-between rounded-lg border border-border/50 bg-muted/20 px-3 text-sm">
+              <span className="font-semibold text-foreground">
                 {currentCustomer ? `${currentCustomer.name} (${getTierLabel(currentCustomer.tier)} Tier)` : 'No customer selected'}
               </span>
               {currentCustomer && (
-                <span className="rounded-md bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-800">
+                <span className="rounded-md bg-primary/15 border border-primary/30 px-2 py-0.5 text-xs font-bold text-primary">
                   {getTierLabel(currentCustomer.tier)}
                 </span>
               )}
@@ -451,12 +440,12 @@ export default function QuoteBuilder() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
               Quote Status
             </label>
-            <div className="flex h-10 items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold">
-              <span className="text-slate-700">Workflow Status:</span>
-              <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-bold text-slate-800">
+            <div className="flex h-10 items-center justify-between rounded-lg border border-border/50 bg-muted/20 px-3 text-sm font-semibold">
+              <span className="text-muted-foreground">Workflow Status:</span>
+              <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-bold text-foreground border border-border/50">
                 {quotation?.status || 'NEW DRAFT'}
               </span>
             </div>
@@ -467,191 +456,186 @@ export default function QuoteBuilder() {
       {/* Discount Governance & Risk Alert Panel */}
       {governanceResult && (
         <div
-          className={`rounded-xl border p-5 shadow-sm transition-all ${
+          className={`rounded-xl border p-5 shadow-xs transition-all ${
             governanceResult.requiresApproval
-              ? 'border-amber-300 bg-amber-50/80 text-amber-950'
-              : 'border-emerald-300 bg-emerald-50/80 text-emerald-950'
+              ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+              : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
           }`}
         >
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-amber-200/60 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border/40 pb-3">
             <div className="flex items-center gap-2 font-bold text-base">
               {governanceResult.requiresApproval ? (
-                <ShieldAlert className="h-5 w-5 text-amber-600" />
+                <>
+                  <ShieldAlert className="h-5 w-5 text-amber-400 shrink-0" />
+                  <span>Discount Requires Management Approval</span>
+                </>
               ) : (
-                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                <>
+                  <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+                  <span>Discount Conforms to Policy (Pre-Approved)</span>
+                </>
               )}
-              <span>
-                Discount Governance: {governanceResult.requiresApproval ? 'Approval Required' : 'Pre-Approved'}
-              </span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wider">Risk Level:</span>
-              <span
-                className={`rounded-md px-2 py-0.5 text-xs font-black uppercase ${
-                  governanceResult.riskLevel === 'CRITICAL'
-                    ? 'bg-rose-600 text-white'
-                    : governanceResult.riskLevel === 'HIGH'
-                    ? 'bg-amber-600 text-white'
-                    : governanceResult.riskLevel === 'MEDIUM'
-                    ? 'bg-yellow-500 text-slate-900'
-                    : 'bg-emerald-600 text-white'
-                }`}
-              >
-                {governanceResult.riskLevel} ({governanceResult.riskScore}/100)
-              </span>
+
+            <div className="flex items-center gap-4 text-xs font-semibold">
+              <span>Requested: <strong className="text-foreground text-sm">{governanceResult.requestedDiscount}%</strong></span>
+              <span>•</span>
+              <span>Max Standard: <strong className="text-foreground text-sm">{(governanceResult as any).maxAllowed ?? governanceResult.allowedDiscount}%</strong></span>
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4 text-sm">
-            <div>
-              <p className="text-xs text-slate-500">Allowed Discount</p>
-              <p className="text-base font-bold">{governanceResult.allowedDiscount}%</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-500">Requested Discount</p>
-              <p className="text-base font-bold">{governanceResult.requestedDiscount}%</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-500">Excess Discount</p>
-              <p className={`text-base font-bold ${governanceResult.excessDiscount > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                {governanceResult.excessDiscount}%
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-500">Required Approval Roles</p>
-              <p className="text-sm font-semibold">
-                {governanceResult.approvalRoles.length > 0 ? governanceResult.approvalRoles.join(' → ') : 'None (Auto)'}
-              </p>
-            </div>
-          </div>
+          <p className="mt-3 text-sm text-foreground/90">{(governanceResult as any).reason || governanceResult.reasons?.join('. ')}</p>
 
-          {governanceResult.reasons.length > 0 && (
-            <div className="mt-3 rounded-lg bg-white/70 p-3 text-xs text-slate-700">
-              <p className="font-semibold text-slate-900 mb-1">Triggered Governance Rules:</p>
-              <ul className="list-disc list-inside space-y-0.5">
-                {governanceResult.reasons.map((r, i) => (
-                  <li key={i}>{r}</li>
-                ))}
-              </ul>
+          {governanceResult.requiresApproval && governanceResult.approvalRoles.length > 0 && (
+            <div className="mt-4 flex flex-wrap items-center gap-2 pt-2 border-t border-border/30">
+              <span className="text-xs font-semibold text-muted-foreground">Required Approval Roles:</span>
+              {governanceResult.approvalRoles.map((role) => (
+                <span
+                  key={role}
+                  className="rounded-md bg-amber-500/20 border border-amber-500/40 px-2.5 py-0.5 text-xs font-bold text-amber-300 tracking-wide"
+                >
+                  {role}
+                </span>
+              ))}
             </div>
           )}
         </div>
       )}
 
-      {/* Product Line Items */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <h2 className="text-base font-semibold text-slate-900">Quotation Line Items</h2>
+      {/* Line Items Table Builder */}
+      <div className="rounded-xl border border-border/50 bg-card shadow-xs overflow-hidden">
+        <div className="flex items-center justify-between border-b border-border/50 px-6 py-4">
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Line Items & Pricing Engine</h2>
+            <p className="text-xs text-muted-foreground">Manage products, pricing tiers, discounts, and billing intervals</p>
+          </div>
+
           <button
             onClick={addLine}
             disabled={isLocked}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-600 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/40 px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-50 transition-colors"
           >
-            <Plus className="h-3.5 w-3.5" />
-            Add Line
+            <Plus className="h-3.5 w-3.5" /> Add Line
           </button>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-600">
-            <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500 border-b border-slate-200">
+          <table className="w-full text-left text-sm text-foreground">
+            <thead className="bg-muted/30 text-xs font-semibold uppercase text-muted-foreground border-b border-border/50">
               <tr>
-                <th className="px-6 py-3 min-w-[240px]">Product</th>
+                <th className="px-4 py-3 min-w-[220px]">Product</th>
+                <th className="px-4 py-3 min-w-[120px]">Billing Type</th>
                 <th className="px-4 py-3 w-24">Qty</th>
                 <th className="px-4 py-3 w-32">Unit Price ($)</th>
-                <th className="px-4 py-3 w-28">Discount (%)</th>
-                <th className="px-4 py-3 w-24">Tax (%)</th>
-                <th className="px-4 py-3 w-32">Billing</th>
-                <th className="px-4 py-3 text-right w-32">Total ($)</th>
-                <th className="px-4 py-3 text-center w-12"></th>
+                <th className="px-4 py-3 w-28">Discount %</th>
+                <th className="px-4 py-3 w-24">Tax %</th>
+                <th className="px-4 py-3 w-32 text-right">Line Total</th>
+                <th className="px-4 py-3 w-16 text-center">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {lines.map((line, index) => {
-                const lineSub = line.quantity * line.unitPrice;
-                const lineDisc = lineSub * (line.discountPercent / 100);
-                const lineTotal = (lineSub - lineDisc) * (1 + line.taxRate / 100);
+            <tbody className="divide-y divide-border/40">
+              {lines.map((line, idx) => {
+                const sub = line.quantity * line.unitPrice;
+                const disc = sub * (line.discountPercent / 100);
+                const afterDisc = sub - disc;
+                const tax = afterDisc * (line.taxRate / 100);
+                const lineTotal = afterDisc + tax;
 
                 return (
-                  <tr key={index} className="hover:bg-slate-50/70">
-                    <td className="px-6 py-3">
+                  <tr key={idx} className="hover:bg-muted/10 transition-colors">
+                    {/* Product Selector */}
+                    <td className="px-4 py-3">
                       <select
                         value={line.productId}
-                        onChange={(e) => handleProductChange(index, e.target.value)}
+                        onChange={(e) => handleProductChange(idx, e.target.value)}
                         disabled={isLocked}
-                        className="w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 focus:border-indigo-600 focus:outline-none"
+                        className="w-full rounded-md border border-border/60 bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none disabled:opacity-50"
                       >
                         <option value="">-- Choose Product --</option>
                         {products.map((p) => (
                           <option key={p.id} value={p.id}>
-                            {p.name} (${Number(p.base_price || (p as any).basePrice).toFixed(2)})
+                            {p.name} ({p.sku})
                           </option>
                         ))}
                       </select>
                     </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="number"
-                        min="1"
-                        value={line.quantity}
-                        onChange={(e) => handleLineChange(index, 'quantity', parseInt(e.target.value) || 1)}
-                        disabled={isLocked}
-                        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-900 focus:border-indigo-600 focus:outline-none"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={line.unitPrice}
-                        onChange={(e) => handleLineChange(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                        disabled={isLocked}
-                        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-900 focus:border-indigo-600 focus:outline-none"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.5"
-                        value={line.discountPercent}
-                        onChange={(e) => handleLineChange(index, 'discountPercent', parseFloat(e.target.value) || 0)}
-                        disabled={isLocked}
-                        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-900 focus:border-indigo-600 focus:outline-none"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="number"
-                        min="0"
-                        max="50"
-                        step="0.5"
-                        value={line.taxRate}
-                        onChange={(e) => handleLineChange(index, 'taxRate', parseFloat(e.target.value) || 0)}
-                        disabled={isLocked}
-                        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-900 focus:border-indigo-600 focus:outline-none"
-                      />
-                    </td>
+
+                    {/* Billing Type */}
                     <td className="px-4 py-3">
                       <select
                         value={line.billingType}
-                        onChange={(e) => handleLineChange(index, 'billingType', e.target.value as any)}
+                        onChange={(e) => handleLineChange(idx, 'billingType', e.target.value)}
                         disabled={isLocked}
-                        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs text-slate-900 focus:border-indigo-600 focus:outline-none"
+                        className="w-full rounded-md border border-border/60 bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none disabled:opacity-50"
                       >
                         <option value="ONE_TIME">One-Time</option>
                         <option value="RECURRING">Recurring</option>
                       </select>
                     </td>
-                    <td className="px-4 py-3 text-right font-semibold text-slate-900">
+
+                    {/* Quantity */}
+                    <td className="px-4 py-3">
+                      <input
+                        type="number"
+                        min="1"
+                        value={line.quantity}
+                        onChange={(e) => handleLineChange(idx, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
+                        disabled={isLocked}
+                        className="w-full rounded-md border border-border/60 bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none disabled:opacity-50"
+                      />
+                    </td>
+
+                    {/* Unit Price */}
+                    <td className="px-4 py-3">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={line.unitPrice}
+                        onChange={(e) => handleLineChange(idx, 'unitPrice', parseFloat(e.target.value) || 0)}
+                        disabled={isLocked}
+                        className="w-full rounded-md border border-border/60 bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none disabled:opacity-50"
+                      />
+                    </td>
+
+                    {/* Discount % */}
+                    <td className="px-4 py-3">
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        max="100"
+                        value={line.discountPercent}
+                        onChange={(e) => handleLineChange(idx, 'discountPercent', parseFloat(e.target.value) || 0)}
+                        disabled={isLocked}
+                        className="w-full rounded-md border border-border/60 bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none disabled:opacity-50"
+                      />
+                    </td>
+
+                    {/* Tax Rate % */}
+                    <td className="px-4 py-3">
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        value={line.taxRate}
+                        onChange={(e) => handleLineChange(idx, 'taxRate', parseFloat(e.target.value) || 0)}
+                        disabled={isLocked}
+                        className="w-full rounded-md border border-border/60 bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none disabled:opacity-50"
+                      />
+                    </td>
+
+                    {/* Calculated Line Total */}
+                    <td className="px-4 py-3 text-right font-semibold text-foreground">
                       ${lineTotal.toFixed(2)}
                     </td>
+
+                    {/* Actions */}
                     <td className="px-4 py-3 text-center">
                       <button
-                        onClick={() => removeLine(index)}
-                        disabled={isLocked}
-                        className="text-slate-400 hover:text-rose-600 transition-colors disabled:opacity-30"
+                        onClick={() => removeLine(idx)}
+                        disabled={isLocked || lines.length <= 1}
+                        className="text-muted-foreground hover:text-rose-400 disabled:opacity-30 transition-colors"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -663,81 +647,113 @@ export default function QuoteBuilder() {
           </table>
         </div>
 
-        {/* Financial Summary Calculation Panel */}
-        <div className="border-t border-slate-200 bg-slate-50/70 p-6">
+        {/* Calculation Summary Footer */}
+        <div className="border-t border-border/50 bg-muted/20 p-6">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
             <div className="space-y-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Authoritative Sales Engine Recalculation
               </span>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-muted-foreground/80">
                 All line items are calculated with high-precision Decimal arithmetic on the backend
               </p>
             </div>
 
             <div className="grid grid-cols-2 gap-x-8 gap-y-2 sm:grid-cols-4 text-right">
               <div>
-                <span className="text-xs text-slate-500">Subtotal:</span>
-                <p className="text-base font-semibold text-slate-900">${localCalculations.subtotal.toFixed(2)}</p>
+                <span className="text-xs text-muted-foreground">Subtotal:</span>
+                <p className="text-base font-semibold text-foreground">${localCalculations.subtotal.toFixed(2)}</p>
               </div>
               <div>
-                <span className="text-xs text-slate-500">Discount:</span>
-                <p className="text-base font-semibold text-rose-600">-${localCalculations.discount.toFixed(2)}</p>
+                <span className="text-xs text-muted-foreground">Discount:</span>
+                <p className="text-base font-semibold text-rose-400">-${localCalculations.discount.toFixed(2)}</p>
               </div>
               <div>
-                <span className="text-xs text-slate-500">Tax:</span>
-                <p className="text-base font-semibold text-slate-900">+${localCalculations.tax.toFixed(2)}</p>
+                <span className="text-xs text-muted-foreground">Tax:</span>
+                <p className="text-base font-semibold text-foreground">+${localCalculations.tax.toFixed(2)}</p>
               </div>
               <div>
-                <span className="text-xs text-slate-500">Grand Total:</span>
-                <p className="text-xl font-bold text-indigo-600">${localCalculations.total.toFixed(2)}</p>
+                <span className="text-xs text-muted-foreground">Grand Total:</span>
+                <p className="text-xl font-bold text-primary">${localCalculations.total.toFixed(2)}</p>
               </div>
 
-              <div className="col-span-2 sm:col-span-4 border-t border-slate-200 pt-2 mt-2 flex justify-end gap-6 text-xs text-slate-500">
-                <span>Cost: <strong className="text-slate-700">${localCalculations.cost.toFixed(2)}</strong></span>
-                <span>Gross Margin: <strong className="text-slate-700">${localCalculations.margin.toFixed(2)}</strong></span>
-                <span>Margin %: <strong className="text-emerald-600">{displayMarginPercent}%</strong></span>
+              <div className="col-span-2 sm:col-span-4 border-t border-border/40 pt-2 mt-2 flex justify-end gap-6 text-xs text-muted-foreground">
+                <span>Cost: <strong className="text-foreground">${localCalculations.cost.toFixed(2)}</strong></span>
+                <span>Gross Margin: <strong className="text-foreground">${localCalculations.margin.toFixed(2)}</strong></span>
+                <span>Margin %: <strong className="text-emerald-400">{displayMarginPercent}%</strong></span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
+      {/* Additional Terms & Notes */}
+      <div className="rounded-xl border border-border/50 bg-card p-6 shadow-xs">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+              Quotation Validity (Valid Until)
+            </label>
+            <input
+              type="date"
+              value={validUntil}
+              onChange={(e) => setValidUntil(e.target.value)}
+              disabled={isLocked}
+              className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none disabled:opacity-50"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+              Customer-Facing Terms & Notes
+            </label>
+            <textarea
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              disabled={isLocked}
+              placeholder="Add delivery timelines, contractual terms, or customer notices..."
+              className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none disabled:opacity-50"
+            />
+          </div>
+        </div>
+      </div>
+
       {/* AI Recommendations Banner (Upsell / Cross-sell) */}
       {recommendations.length > 0 && (
-        <div className="rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50/80 via-white to-purple-50/80 p-6 shadow-sm">
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-6 shadow-xs">
           <div className="flex items-center gap-2 mb-4">
-            <Sparkles className="h-5 w-5 text-indigo-600" />
-            <h3 className="text-base font-bold text-slate-900">Recommended Additions & Accessories</h3>
+            <Sparkles className="h-5 w-5 text-primary" />
+            <h3 className="text-base font-bold text-foreground">Recommended Additions & Accessories</h3>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {recommendations.map((rec) => (
               <div
                 key={rec.id}
-                className="flex flex-col justify-between rounded-lg border border-slate-200 bg-white p-4 shadow-xs"
+                className="flex flex-col justify-between rounded-lg border border-border/50 bg-card p-4 shadow-xs"
               >
                 <div>
                   <div className="flex items-center justify-between">
-                    <span className="font-semibold text-sm text-slate-900">{rec.product.name}</span>
-                    <span className="rounded-md bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-800">
+                    <span className="font-semibold text-sm text-foreground">{rec.product.name}</span>
+                    <span className="rounded-md bg-primary/15 border border-primary/30 px-2 py-0.5 text-xs font-bold text-primary">
                       ${Number(rec.product.basePrice).toFixed(2)}
                     </span>
                   </div>
-                  <p className="mt-1.5 text-xs text-slate-600 line-clamp-2">{rec.reason}</p>
+                  <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">{rec.reason}</p>
                 </div>
 
-                <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
-                  <div className="text-[11px] text-slate-500">
+                <div className="mt-4 flex items-center justify-between border-t border-border/40 pt-3">
+                  <div className="text-[11px] text-muted-foreground">
                     <span>Revenue: +${rec.revenueImpact}</span>
                     <span className="mx-1">•</span>
-                    <span className="text-emerald-600 font-semibold">Margin: +${rec.marginImpact}</span>
+                    <span className="text-emerald-400 font-semibold">Margin: +${rec.marginImpact}</span>
                   </div>
 
                   <button
                     onClick={() => handleAddRecommendation(rec)}
                     disabled={addingRecId === rec.id}
-                    className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                    className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-xs hover:bg-primary/90 disabled:opacity-50 transition-colors"
                   >
                     <Plus className="h-3 w-3" />
                     {addingRecId === rec.id ? 'Adding...' : 'Add to Quote'}

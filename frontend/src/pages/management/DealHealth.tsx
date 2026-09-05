@@ -1,17 +1,38 @@
 import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { quotationsApi, dealHealthApi } from '../../api';
-import type { Quotation } from '../../types';
+import { useToast } from '../../components/Toast';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { TableSkeleton } from '@/components/ui/skeleton';
 import { 
   ShieldAlert, 
   CheckCircle2, 
   AlertTriangle, 
   Activity, 
-  TrendingDown, 
-  Clock, 
-  Percent, 
   RefreshCw,
-  Bell
+  Sparkles
 } from 'lucide-react';
+
+const rowVariants: any = {
+  hidden: { opacity: 0, y: 10 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: {
+      delay: i * 0.03,
+      duration: 0.2,
+      ease: "easeOut",
+    },
+  }),
+};
 
 interface DealHealthItem {
   id: string;
@@ -26,8 +47,9 @@ interface DealHealthItem {
 }
 
 export default function DealHealth() {
+  const { toast } = useToast();
   const [dealItems, setDealItems] = useState<DealHealthItem[]>([]);
-  const [alerts, setAlerts] = useState<any[]>([]);
+  const [, setAlerts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadData = async () => {
@@ -50,29 +72,33 @@ export default function DealHealth() {
         const createdTime = new Date(q.createdAt || q.created_at || Date.now()).getTime();
         const daysStalled = Math.max(0, Math.floor((Date.now() - createdTime) / (1000 * 60 * 60 * 24)));
 
-        // Real health calculation logic based on real quotation fields
         const reasons: string[] = [];
         let deduction = 0;
 
         if (discountPercent > 15) {
-          deduction += 25;
-          reasons.push(`High Discount (${discountPercent.toFixed(1)}%)`);
+          deduction += 35;
+          reasons.push(`High discount (${discountPercent.toFixed(1)}%)`);
+        } else if (discountPercent > 10) {
+          deduction += 20;
+          reasons.push(`Moderate discount (${discountPercent.toFixed(1)}%)`);
         }
-        if (margin < 15 && margin > 0) {
-          deduction += 30;
-          reasons.push(`Low Gross Margin (${margin.toFixed(1)}%)`);
+
+        if (margin < 10 && margin > 0) {
+          deduction += 40;
+          reasons.push(`Critical margin (${margin.toFixed(1)}%)`);
+        } else if (margin < 20 && margin > 0) {
+          deduction += 20;
+          reasons.push(`Low margin (${margin.toFixed(1)}%)`);
         }
+
         if (daysStalled > 7) {
           deduction += 20;
-          reasons.push(`Stalled Deal (${daysStalled} days inactive)`);
+          reasons.push(`Stalled ${daysStalled} days`);
         }
+
         if (q.status === 'PENDING_APPROVAL' || q.status === 'UNDER_REVIEW') {
           deduction += 15;
           reasons.push('Approval Delay (Pending Review)');
-        }
-        if (q.status === 'NEGOTIATION') {
-          deduction += 10;
-          reasons.push('Negotiation In Progress');
         }
 
         const healthScore = Math.max(15, 100 - deduction);
@@ -88,15 +114,15 @@ export default function DealHealth() {
           status: q.status,
           healthScore,
           healthStatus,
-          reasons,
+          reasons: reasons.length > 0 ? reasons : ['Optimal margin and discount profile'],
           daysStalled,
         };
       });
 
       setDealItems(items);
-      setAlerts(alertsList || []);
-    } catch (err) {
-      console.error('Failed to load deal health:', err);
+      setAlerts(Array.isArray(alertsList) ? alertsList : []);
+    } catch (err: any) {
+      toast.fail(err.message || 'Failed to refresh deal health');
     } finally {
       setLoading(false);
     }
@@ -114,109 +140,127 @@ export default function DealHealth() {
     : 100;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto animate-in fade-in duration-200 pb-12">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border/40 pb-5">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Deal Health & Risk Monitoring</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Predictive deal velocity, anomaly detection, and governance slippage indicators
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Deal Health & Predictive Risk</h1>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary border border-primary/20">
+              <Sparkles className="w-3 h-3" /> AI Velocity
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">
+            Predictive deal velocity, margin degradation tracking, and governance slippage warnings
           </p>
         </div>
 
-        <button
+        <Button
+          variant="outline"
+          size="sm"
           onClick={loadData}
           disabled={loading}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors shadow-xs"
+          className="flex items-center gap-2 border-border/60 bg-card text-foreground hover:bg-white/5"
         >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           Refresh Status
-        </button>
+        </Button>
       </div>
 
       {/* Summary Scorecards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="rounded-xl border border-border/50 bg-card p-5 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Average Health</span>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
-              <Activity className="h-5 w-5" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Portfolio Health</span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Activity className="h-4 w-4" />
             </div>
           </div>
-          <p className="mt-2 text-3xl font-bold text-slate-900">{avgHealthScore}/100</p>
-          <p className="mt-1 text-xs text-slate-400">Across active pipeline</p>
+          <p className="mt-2 text-2xl font-bold text-foreground">{avgHealthScore}/100</p>
+          <p className="mt-1 text-xs text-muted-foreground">Average across active deals</p>
         </div>
 
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-5 shadow-sm">
+        <div className="rounded-xl border border-emerald-500/20 bg-card p-5 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-emerald-800">Healthy Deals</span>
-            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-400">Healthy Deals</span>
+            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
           </div>
-          <p className="mt-2 text-3xl font-bold text-emerald-950">{healthyCount}</p>
-          <p className="mt-1 text-xs text-emerald-700">Normal velocity & margins</p>
+          <p className="mt-2 text-2xl font-bold text-emerald-400">{healthyCount}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Normal margins and pacing</p>
         </div>
 
-        <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-5 shadow-sm">
+        <div className="rounded-xl border border-amber-500/20 bg-card p-5 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-amber-800">At Risk</span>
-            <AlertTriangle className="h-5 w-5 text-amber-600" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-400">At-Risk Deals</span>
+            <AlertTriangle className="h-4 w-4 text-amber-400" />
           </div>
-          <p className="mt-2 text-3xl font-bold text-amber-950">{atRiskCount}</p>
-          <p className="mt-1 text-xs text-amber-700">Discount or review delay</p>
+          <p className="mt-2 text-2xl font-bold text-amber-400">{atRiskCount}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Discount or approval delays</p>
         </div>
 
-        <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-5 shadow-sm">
+        <div className="rounded-xl border border-rose-500/20 bg-card p-5 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-rose-800">Critical Attention</span>
-            <ShieldAlert className="h-5 w-5 text-rose-600" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-rose-400">Critical Attention</span>
+            <ShieldAlert className="h-4 w-4 text-rose-400" />
           </div>
-          <p className="mt-2 text-3xl font-bold text-rose-950">{criticalCount}</p>
-          <p className="mt-1 text-xs text-rose-700">High discount / stalled deals</p>
+          <p className="mt-2 text-2xl font-bold text-rose-400">{criticalCount}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Immediate escalation required</p>
         </div>
       </div>
 
       {/* Main Table */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="border-b border-slate-200 px-6 py-4">
-          <h2 className="text-base font-semibold text-slate-900">Deal Health Breakdown</h2>
+      <div className="rounded-xl border border-border/50 bg-card shadow-xs overflow-hidden">
+        <div className="border-b border-border/50 px-6 py-4 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-foreground">Pipeline Health & Driver Breakdown</h2>
+          <span className="text-xs text-muted-foreground">Calculated with authoritative pricing engine</span>
         </div>
 
         {loading ? (
-          <div className="flex h-64 items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+          <div className="p-4">
+            <TableSkeleton rows={5} cols={7} />
           </div>
         ) : dealItems.length === 0 ? (
-          <div className="p-8 text-center text-slate-500">No deals in pipeline</div>
+          <div className="p-12 text-center text-muted-foreground">
+            <Activity className="mx-auto h-10 w-10 text-muted-foreground/40 mb-2" />
+            <p className="text-sm font-semibold text-foreground">No active deals to analyze</p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-600">
-              <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500 border-b border-slate-200">
-                <tr>
-                  <th className="px-6 py-3.5">Quotation #</th>
-                  <th className="px-6 py-3.5">Customer</th>
-                  <th className="px-6 py-3.5">Amount</th>
-                  <th className="px-6 py-3.5">Status</th>
-                  <th className="px-6 py-3.5">Health Score</th>
-                  <th className="px-6 py-3.5">Risk Status</th>
-                  <th className="px-6 py-3.5">Identified Risk Drivers</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {dealItems.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="px-6 py-4 font-bold text-slate-900">{item.quotationNumber}</td>
-                    <td className="px-6 py-4 font-medium text-slate-800">{item.customerName}</td>
-                    <td className="px-6 py-4 font-semibold text-slate-900">${item.amount.toFixed(2)}</td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-700">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent border-b border-border/50 bg-muted/30">
+                  <TableHead className="px-6 py-3.5 text-xs uppercase font-semibold text-muted-foreground">Quotation #</TableHead>
+                  <TableHead className="px-6 py-3.5 text-xs uppercase font-semibold text-muted-foreground">Customer</TableHead>
+                  <TableHead className="px-6 py-3.5 text-xs uppercase font-semibold text-muted-foreground">Amount</TableHead>
+                  <TableHead className="px-6 py-3.5 text-xs uppercase font-semibold text-muted-foreground">Status</TableHead>
+                  <TableHead className="px-6 py-3.5 text-xs uppercase font-semibold text-muted-foreground">Health Score</TableHead>
+                  <TableHead className="px-6 py-3.5 text-xs uppercase font-semibold text-muted-foreground">Risk Status</TableHead>
+                  <TableHead className="px-6 py-3.5 text-xs uppercase font-semibold text-muted-foreground">Identified Risk Drivers</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {dealItems.map((item, idx) => (
+                  <motion.tr
+                    key={item.id}
+                    custom={idx}
+                    initial="hidden"
+                    animate="visible"
+                    variants={rowVariants}
+                    className="border-b border-border/40 hover:bg-white/[0.02] transition-colors"
+                  >
+                    <TableCell className="px-6 py-4 font-mono font-bold text-foreground text-xs">{item.quotationNumber}</TableCell>
+                    <TableCell className="px-6 py-4 font-medium text-foreground text-xs">{item.customerName}</TableCell>
+                    <TableCell className="px-6 py-4 font-semibold text-foreground text-xs">${item.amount.toFixed(2)}</TableCell>
+                    <TableCell className="px-6 py-4">
+                      <span className="inline-flex rounded-full bg-muted border border-border/50 px-2 py-0.5 text-[11px] font-medium text-foreground">
                         {item.status}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 font-bold">
+                    </TableCell>
+                    <TableCell className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <div className="w-16 bg-slate-200 rounded-full h-2 overflow-hidden">
+                        <div className="w-16 bg-muted/60 rounded-full h-1.5 overflow-hidden">
                           <div
-                            className={`h-full ${
+                            className={`h-full rounded-full ${
                               item.healthScore < 50
                                 ? 'bg-rose-500'
                                 : item.healthScore < 80
@@ -226,39 +270,38 @@ export default function DealHealth() {
                             style={{ width: `${item.healthScore}%` }}
                           />
                         </div>
-                        <span>{item.healthScore}</span>
+                        <span className="font-mono text-xs font-bold text-foreground">{item.healthScore}</span>
                       </div>
-                    </td>
-                    <td className="px-6 py-4">
+                    </TableCell>
+                    <TableCell className="px-6 py-4">
                       <span
-                        className={`inline-flex rounded-md px-2 py-0.5 text-xs font-black uppercase ${
+                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase ${
                           item.healthStatus === 'CRITICAL'
-                            ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                            ? 'bg-rose-500/10 text-rose-400 border border-rose-500/25'
                             : item.healthStatus === 'AT_RISK'
-                            ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                            : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/25'
+                            : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25'
                         }`}
                       >
                         {item.healthStatus.replace('_', ' ')}
                       </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      {item.reasons.length === 0 ? (
-                        <span className="text-xs text-emerald-600 font-medium">Optimal Velocity</span>
-                      ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {item.reasons.map((r, i) => (
-                            <span key={i} className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-700 font-medium">
-                              {r}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
+                    </TableCell>
+                    <TableCell className="px-6 py-4">
+                      <div className="flex flex-wrap gap-1.5">
+                        {item.reasons.map((r, i) => (
+                          <span
+                            key={i}
+                            className="inline-flex items-center rounded-md bg-muted/40 border border-border/50 px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+                          >
+                            {r}
+                          </span>
+                        ))}
+                      </div>
+                    </TableCell>
+                  </motion.tr>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
       </div>

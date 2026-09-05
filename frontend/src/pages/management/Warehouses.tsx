@@ -81,8 +81,8 @@ export default function Warehouses() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Warehouses</h1>
-          <p className="text-sm text-gray-500">Manage warehouse locations and stock levels</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Warehouses</h1>
+          <p className="text-sm text-muted-foreground">Manage warehouse locations and stock levels</p>
         </div>
         <Button onClick={openCreate}>Add Warehouse</Button>
       </div>
@@ -90,9 +90,9 @@ export default function Warehouses() {
       <DataTable columns={columns} data={warehouses as any} loading={loading} emptyMessage="No warehouses found" />
 
       {expanded && (
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h3 className="mb-4 text-lg font-semibold text-gray-900">Stock Levels</h3>
-          <p className="text-sm text-gray-500">Stock data for warehouse would appear here.</p>
+        <div className="rounded-xl border border-border/50 bg-card p-6 shadow-xs">
+          <h3 className="mb-4 text-lg font-semibold text-foreground">Stock Levels</h3>
+          <p className="text-sm text-muted-foreground">Stock data for warehouse will appear here.</p>
         </div>
       )}
 
@@ -103,7 +103,7 @@ export default function Warehouses() {
           <Input label="Country" value={form.country || ''} onChange={(e) => setForm({ ...form, country: e.target.value })} />
           <div className="flex items-center gap-2">
             <input type="checkbox" id="wh_active" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} className="rounded" />
-            <label htmlFor="wh_active" className="text-sm text-gray-900">Active</label>
+            <label htmlFor="wh_active" className="text-sm text-foreground">Active</label>
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>

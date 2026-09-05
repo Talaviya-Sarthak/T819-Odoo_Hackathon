@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ordersApi, quotationsApi, invoicesApi } from '../../api';
 import { useToast } from '../../components/Toast';
+import { TableSkeleton } from '../../components/ui/skeleton';
 
 interface OrderLine {
   id: string;
@@ -238,9 +239,8 @@ export default function OperationsOrders() {
       {/* Orders Table */}
       <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/80 shadow-2xl backdrop-blur-xl">
         {loading ? (
-          <div className="py-20 text-center">
-            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent"></div>
-            <p className="mt-3 text-sm text-slate-400">Loading sales orders...</p>
+          <div className="p-4">
+            <TableSkeleton rows={5} cols={6} />
           </div>
         ) : filteredOrders.length === 0 ? (
           <div className="py-20 text-center">

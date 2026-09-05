@@ -1,3 +1,5 @@
+import React from 'react';
+
 interface CardProps {
   children: React.ReactNode;
   className?: string;
@@ -10,7 +12,7 @@ export default function Card({
   padding = 'p-6'
 }: CardProps) {
   return (
-    <div className={`rounded-lg border border-gray-200 bg-white ${padding} ${className}`}>
+    <div className={`rounded-xl border border-border/50 bg-card text-card-foreground shadow-xs ${padding} ${className}`}>
       {children}
     </div>
   );

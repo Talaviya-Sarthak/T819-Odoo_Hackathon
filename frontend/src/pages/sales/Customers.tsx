@@ -1,27 +1,41 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { motion } from 'framer-motion';
 import { getCustomers, createCustomer, updateCustomer } from '../../services/customers.api';
 import type { Customer, CustomerTier } from '../../types';
-import Button from '../../components/Button';
-import Card from '../../components/Card';
-import DataTable from '../../components/DataTable';
-import Modal from '../../components/Modal';
-import Badge from '../../components/Badge';
+import { Button } from '@/components/ui/button';
 import Input from '../../components/Input';
+import { Skeleton } from '@/components/ui/skeleton';
+import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import { useToast } from '../../components/Toast';
+import { 
+  Users, 
+  Plus, 
+  Search, 
+  Building, 
+  Mail, 
+  Phone, 
+  Globe, 
+  CreditCard,
+  Edit2,
+  RefreshCw,
+  Sparkles,
+  ShieldCheck,
+  Briefcase
+} from 'lucide-react';
 
-const tierBadgeVariant: Record<string, 'neutral' | 'info' | 'warning' | 'success'> = {
-  BRONZE: 'neutral',
-  SILVER: 'info',
-  GOLD: 'warning',
-  PLATINUM: 'success',
+const tierBadgeStyles: Record<string, string> = {
+  BRONZE: 'bg-amber-700/15 text-amber-500 border-amber-700/30',
+  SILVER: 'bg-slate-400/15 text-slate-300 border-slate-400/30',
+  GOLD: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30',
+  PLATINUM: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30',
 };
 
 const tierOptions = [
-  { value: 'BRONZE', label: 'Bronze' },
-  { value: 'SILVER', label: 'Silver' },
-  { value: 'GOLD', label: 'Gold' },
-  { value: 'PLATINUM', label: 'Platinum' },
+  { value: 'BRONZE', label: 'Bronze Tier' },
+  { value: 'SILVER', label: 'Silver Tier' },
+  { value: 'GOLD', label: 'Gold Tier' },
+  { value: 'PLATINUM', label: 'Platinum Tier' },
 ];
 
 const emptyForm = {
@@ -34,6 +48,19 @@ const emptyForm = {
   country: '',
   tier: '' as CustomerTier | '',
   currency: 'USD',
+};
+
+const rowVariants: any = {
+  hidden: { opacity: 0, y: 10 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: {
+      delay: i * 0.03,
+      duration: 0.2,
+      ease: 'easeOut',
+    },
+  }),
 };
 
 export default function Customers() {
@@ -50,9 +77,9 @@ export default function Customers() {
     setLoading(true);
     try {
       const res = await getCustomers();
-      setCustomers(res.customers);
-    } catch (err) {
-      toast('Failed to load customers', 'error');
+      setCustomers(res.customers || []);
+    } catch (err: any) {
+      toast.fail(err?.message || 'Failed to load customers');
     } finally {
       setLoading(false);
     }
@@ -60,23 +87,25 @@ export default function Customers() {
 
   useEffect(() => { load(); }, []);
 
-  const filtered = customers.filter((c) =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.company?.toLowerCase().includes(search.toLowerCase()) ||
-    c.email.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = useMemo(() => {
+    return customers.filter((c) =>
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      c.company?.toLowerCase().includes(search.toLowerCase()) ||
+      c.email.toLowerCase().includes(search.toLowerCase())
+    );
+  }, [customers, search]);
+
+  const getTierName = (tier: any): string => {
+    if (!tier) return 'BRONZE';
+    if (typeof tier === 'object' && tier.name) return String(tier.name).toUpperCase();
+    if (typeof tier === 'string') return tier.toUpperCase();
+    return 'BRONZE';
+  };
 
   const openAdd = () => {
     setEditing(null);
     setForm(emptyForm);
     setModalOpen(true);
-  };
-
-  const getTierName = (tier: any): string => {
-    if (!tier) return 'BRONZE';
-    if (typeof tier === 'object' && tier.name) return String(tier.name);
-    if (typeof tier === 'string') return tier;
-    return 'BRONZE';
   };
 
   const openEdit = (c: Customer) => {
@@ -87,113 +116,289 @@ export default function Customers() {
       phone: c.phone || '',
       company: c.company || '',
       address: c.address || '',
-      city: c.city || '',
-      country: c.country || '',
+      city: (c as any).city || '',
+      country: (c as any).country || '',
       tier: getTierName(c.tier) as CustomerTier,
-      currency: 'USD',
+      currency: (c as any).currency || 'USD',
     });
     setModalOpen(true);
   };
 
   const handleSave = async () => {
     if (!form.name || !form.email) {
-      toast('Name and email are required', 'warning');
+      toast.warning('Name and email are required', 'Validation');
       return;
     }
+
     setSaving(true);
     try {
-      const payload = { ...form, tier: getTierName(form.tier) as CustomerTier };
+      const payload = {
+        ...form,
+        tier: form.tier ? (form.tier as CustomerTier) : undefined,
+      };
       if (editing) {
         await updateCustomer(editing.id, payload);
-        toast('Customer updated', 'success');
+        toast.success('Customer profile updated successfully');
       } else {
         await createCustomer(payload);
-        toast('Customer created', 'success');
+        toast.success('New customer registered successfully');
       }
       setModalOpen(false);
       load();
-    } catch (err) {
-      toast('Failed to save customer', 'error');
+    } catch (err: any) {
+      toast.fail(err?.message || 'Failed to save customer');
     } finally {
       setSaving(false);
     }
   };
 
-  const columns = [
-    { key: 'name', label: 'Name' },
-    { key: 'company', label: 'Company', render: (r: Customer) => r.company || '-' },
-    { key: 'email', label: 'Email' },
-    { key: 'city', label: 'City', render: (r: Customer) => r.city || '-' },
-    { key: 'country', label: 'Country', render: (r: Customer) => r.country || '-' },
-    {
-      key: 'tier',
-      label: 'Tier',
-      render: (r: Customer) => {
-        const tierName = getTierName(r.tier);
-        return (
-          <Badge variant={tierBadgeVariant[tierName] || 'neutral'}>{tierName}</Badge>
-        );
-      },
-    },
-  ];
-
   const updateField = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
+  // KPI Calculations
+  const stats = useMemo(() => {
+    const total = customers.length;
+    const enterprise = customers.filter((c) => {
+      const t = getTierName(c.tier);
+      return t === 'GOLD' || t === 'PLATINUM';
+    }).length;
+    return { total, enterprise };
+  }, [customers]);
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 max-w-7xl mx-auto animate-in fade-in duration-200 pb-12">
+      {/* Top Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border/40 pb-5">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Customers</h1>
-          <p className="text-sm text-gray-500">Manage your customer accounts</p>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Customer Accounts & Accounts Directory</h1>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary border border-primary/20">
+              <Building className="w-3 h-3" /> CRM Master
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">
+            Authoritative accounts directory with tiered pricing classification and contact details
+          </p>
         </div>
-        <Button onClick={openAdd}>Add Customer</Button>
+
+        <div className="flex items-center gap-2.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={load}
+            disabled={loading}
+            className="flex items-center gap-2 border-border/60 bg-card text-foreground hover:bg-white/5"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+
+          <Button onClick={openAdd} size="sm" className="flex items-center gap-1.5 shadow-xs">
+            <Plus className="w-4 h-4" />
+            Add Customer
+          </Button>
+        </div>
       </div>
 
-      <Card padding="p-4">
-        <input
-          type="text"
-          placeholder="Search by name, company, or email..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-gray-900"
-        />
-      </Card>
+      {/* Clean Minimal KPI Row */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="rounded-xl border border-border/50 bg-card p-4 shadow-xs">
+          <span className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Total Accounts</span>
+          <div className="mt-1.5 flex items-baseline justify-between">
+            <p className="text-2xl font-bold text-foreground">{stats.total}</p>
+            <span className="text-xs text-muted-foreground font-medium">Registered clients</span>
+          </div>
+        </div>
 
-      <DataTable
-        columns={columns}
-        data={filtered as unknown as Record<string, unknown>[]}
-        loading={loading}
-        emptyMessage="No customers found"
-        onRowClick={(r) => openEdit(r as unknown as Customer)}
-      />
+        <div className="rounded-xl border border-border/50 bg-card p-4 shadow-xs">
+          <span className="text-[11px] font-semibold tracking-wider text-amber-400 uppercase">Tier 1 Enterprise</span>
+          <div className="mt-1.5 flex items-baseline justify-between">
+            <p className="text-2xl font-bold text-amber-400">{stats.enterprise}</p>
+            <span className="text-xs text-muted-foreground font-medium">Gold & Platinum tier</span>
+          </div>
+        </div>
 
-      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Customer' : 'Add Customer'} size="lg">
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Name" value={form.name} onChange={updateField('name')} required />
-            <Input label="Email" value={form.email} onChange={updateField('email')} type="email" required />
+        <div className="rounded-xl border border-border/50 bg-card p-4 shadow-xs">
+          <span className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Billing Currency</span>
+          <div className="mt-1.5 flex items-baseline justify-between">
+            <p className="text-2xl font-bold text-foreground">USD ($)</p>
+            <span className="text-xs text-emerald-400 font-medium">Global Standard</span>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Phone" value={form.phone} onChange={updateField('phone')} />
-            <Input label="Company" value={form.company} onChange={updateField('company')} />
+        </div>
+      </div>
+
+      {/* Search & Actions Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card/60 p-3 rounded-xl border border-border/50">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search by company name, contact, or email..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-8 w-full rounded-lg border border-border/60 bg-background pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none"
+          />
+        </div>
+        <span className="text-xs text-muted-foreground font-medium">
+          Showing {filtered.length} of {customers.length} accounts
+        </span>
+      </div>
+
+      {/* Main Table */}
+      <div className="rounded-xl border border-border/50 bg-card shadow-xs overflow-hidden">
+        {loading ? (
+          <div className="flex h-56 flex-col items-center justify-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <RefreshCw className="h-5 w-5 animate-spin" />
+            </div>
+            <span className="text-sm font-medium text-foreground">Loading accounts directory...</span>
           </div>
-          <Input label="Address" value={form.address} onChange={updateField('address')} />
-          <div className="grid grid-cols-3 gap-4">
-            <Input label="City" value={form.city} onChange={updateField('city')} />
-            <Input label="Country" value={form.country} onChange={updateField('country')} />
-            <Input label="Currency" value={form.currency} onChange={updateField('currency')} />
+        ) : filtered.length === 0 ? (
+          <div className="p-12 text-center text-muted-foreground">
+            <Users className="mx-auto h-10 w-10 text-muted-foreground/40 mb-2" />
+            <h3 className="text-base font-semibold text-foreground">No Customer Accounts Found</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Try adjusting your search query or add a new account.</p>
           </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-foreground">
+              <thead className="bg-muted/30 text-xs font-semibold uppercase text-muted-foreground border-b border-border/50">
+                <tr>
+                  <th className="px-6 py-3.5">Account & Contact</th>
+                  <th className="px-6 py-3.5">Company</th>
+                  <th className="px-6 py-3.5">Contact Details</th>
+                  <th className="px-6 py-3.5">Location</th>
+                  <th className="px-6 py-3.5">Tier Classification</th>
+                  <th className="px-6 py-3.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/40">
+                {loading ? (
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <tr key={i} className="border-b border-border/40">
+                      <td className="px-6 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <Skeleton className="h-8 w-8 rounded-lg" />
+                          <div className="space-y-1.5">
+                            <Skeleton className="h-4 w-32" />
+                            <Skeleton className="h-3 w-40" />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-3.5"><Skeleton className="h-4 w-28" /></td>
+                      <td className="px-6 py-3.5"><Skeleton className="h-4 w-36" /></td>
+                      <td className="px-6 py-3.5"><Skeleton className="h-4 w-24" /></td>
+                      <td className="px-6 py-3.5"><Skeleton className="h-5 w-20 rounded-full" /></td>
+                      <td className="px-6 py-3.5 text-right"><Skeleton className="h-8 w-16 ml-auto rounded-md" /></td>
+                    </tr>
+                  ))
+                ) : filtered.map((c, idx) => {
+                  const tier = getTierName(c.tier);
+                  const tierStyle = tierBadgeStyles[tier] || tierBadgeStyles.BRONZE;
+                  const initials = c.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
+
+                  return (
+                    <motion.tr
+                      key={c.id}
+                      custom={idx}
+                      initial="hidden"
+                      animate="visible"
+                      variants={rowVariants}
+                      onClick={() => openEdit(c)}
+                      className="cursor-pointer hover:bg-white/[0.02] transition-colors"
+                    >
+                      <td className="px-6 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary text-xs font-bold border border-primary/20">
+                            {initials}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-foreground text-sm">{c.name}</div>
+                            <div className="text-xs text-muted-foreground">{c.email}</div>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-3.5">
+                        <div className="flex items-center gap-1.5 text-foreground text-xs font-medium">
+                          <Building className="w-3.5 h-3.5 text-muted-foreground/60" />
+                          <span>{c.company || '—'}</span>
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-3.5 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1.5">
+                          <Phone className="w-3.5 h-3.5 text-muted-foreground/60" />
+                          <span>{c.phone || '—'}</span>
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-3.5 text-xs text-muted-foreground">
+                        <span>{c.city ? `${c.city}, ${c.country || ''}` : c.country || '—'}</span>
+                      </td>
+
+                      <td className="px-6 py-3.5">
+                        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold tracking-wide ${tierStyle}`}>
+                          {tier}
+                        </span>
+                      </td>
+
+                      <td className="px-6 py-3.5 text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEdit(c);
+                          }}
+                          className="h-7 px-2.5 text-xs text-primary hover:bg-primary/10"
+                        >
+                          <Edit2 className="w-3 h-3 mr-1" /> Edit
+                        </Button>
+                      </td>
+                    </motion.tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Clean Edit / Create Modal */}
+      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Customer Profile' : 'Register New Customer'} size="lg">
+        <div className="space-y-4 pt-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input label="Primary Contact Name" value={form.name} onChange={updateField('name')} required placeholder="e.g. Eleanor Vance" />
+            <Input label="Business Email" value={form.email} onChange={updateField('email')} type="email" required placeholder="e.g. eleanor@apexlogistics.com" />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input label="Phone Number" value={form.phone} onChange={updateField('phone')} placeholder="+1 (555) 019-2834" />
+            <Input label="Company / Entity Name" value={form.company} onChange={updateField('company')} placeholder="e.g. Apex Global Logistics" />
+          </div>
+
+          <Input label="Street Address" value={form.address} onChange={updateField('address')} placeholder="100 Enterprise Way, Suite 400" />
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Input label="City" value={form.city} onChange={updateField('city')} placeholder="San Francisco" />
+            <Input label="Country" value={form.country} onChange={updateField('country')} placeholder="United States" />
+            <Input label="Currency" value={form.currency} onChange={updateField('currency')} placeholder="USD" />
+          </div>
+
           <Select
-            label="Tier"
+            label="Pricing Tier Assignment"
             value={form.tier}
             onChange={updateField('tier')}
             options={tierOptions}
-            placeholder="Select tier"
+            placeholder="Select customer pricing tier"
           />
-          <div className="flex justify-end gap-3 pt-4">
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave} loading={saving}>{editing ? 'Update' : 'Create'}</Button>
+
+          <div className="flex justify-end gap-2.5 pt-4 border-t border-border/40">
+            <Button variant="outline" size="sm" onClick={() => setModalOpen(false)}>Cancel</Button>
+            <Button size="sm" onClick={handleSave} disabled={saving}>
+              {saving ? 'Saving...' : editing ? 'Update Account' : 'Register Account'}
+            </Button>
           </div>
         </div>
       </Modal>
