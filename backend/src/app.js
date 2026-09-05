@@ -21,6 +21,11 @@ const negotiationsRoutes = require('./modules/negotiations/negotiations.routes')
 const recommendationsRoutes = require('./modules/recommendations/recommendations.routes');
 const dealHealthRoutes = require('./modules/deal-health/deal-health.routes');
 const reportsRoutes = require('./modules/reports/reports.routes');
+const ordersRoutes = require('./modules/orders/orders.routes');
+const warehousesRoutes = require('./modules/warehouses/warehouses.routes');
+const inventoryRoutes = require('./modules/inventory/inventory.routes');
+const backordersRoutes = require('./modules/backorders/backorders.routes');
+const analyticsRoutes = require('./modules/analytics/analytics.routes');
 const { authenticate } = require('./middlewares/auth.middleware');
 const rbacService = require('./services/rbac.service');
 const { sendSuccess } = require('./utils/response');
@@ -38,7 +43,7 @@ app.use(requestLogger);
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: config.NODE_ENV === 'test' ? 10000 : 500,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later.' }
@@ -90,10 +95,18 @@ app.use('/api/quotations', quotationsRoutes);
 app.use('/api', discountsRoutes);
 app.use('/api/approvals', approvalsRoutes);
 app.use('/api', fulfillmentRoutes);
+app.use('/api/fulfillment', fulfillmentRoutes);
 app.use('/api', billingRoutes);
+app.use('/api/billing', billingRoutes);
 app.use('/api', negotiationsRoutes);
 app.use('/api', recommendationsRoutes);
 app.use('/api', dealHealthRoutes);
+app.use('/api', reportsRoutes);
+app.use('/api/orders', ordersRoutes);
+app.use('/api/warehouses', warehousesRoutes);
+app.use('/api/inventory', inventoryRoutes);
+app.use('/api/backorders', backordersRoutes);
+app.use('/api/analytics', analyticsRoutes);
 // Audit logs endpoint (Admin & Manager)
 const { listAuditLogs } = require('./services/audit.service');
 const { requireRole } = require('./middlewares/role.middleware');
