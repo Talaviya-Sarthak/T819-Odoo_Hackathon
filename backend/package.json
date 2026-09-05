@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
+    "setup": "node src/setup.js",
+    "seed": "node src/seed.js",
     "test": "node --test tests/*.test.js"
   },
   "dependencies": {

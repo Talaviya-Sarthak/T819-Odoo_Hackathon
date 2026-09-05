@@ -1,48 +1,22 @@
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import Button from '../components/Button';
+import { getPortalPath } from '../config/roles';
+import type { Role } from '../types';
 
 export default function Dashboard() {
-  const { user, logout } = useAuth();
+  const { user, loading } = useAuth();
 
-  async function handleLogout() {
-    try {
-      await fetch(import.meta.env.VITE_API_URL + '/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-      });
-    } catch {
-      // ignore logout error
-    }
-    logout();
+  if (loading) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4">
+        <div className="h-8 w-8 animate-spin rounded-full border-3 border-gray-200 border-t-gray-900" />
+      </div>
+    );
   }
 
-  return (
-    <div className="flex min-h-screen items-center justify-center p-5">
-      <div className="w-full max-w-[400px] rounded-lg border border-gray-200 bg-white p-10 text-center">
-        <div className="mb-8">
-          <h1 className="text-2xl font-semibold">Authenticated</h1>
-          <p className="mt-2 text-sm text-gray-500">You are successfully logged in.</p>
-        </div>
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
 
-        <div className="mb-8 rounded-md bg-gray-50 p-4 text-left">
-          <div className="flex justify-between border-b border-gray-100 py-2">
-            <span className="text-sm text-gray-500">User:</span>
-            <span className="text-sm font-medium">{user?.email}</span>
-          </div>
-          <div className="flex justify-between border-b border-gray-100 py-2">
-            <span className="text-sm text-gray-500">Authentication:</span>
-            <span className="text-sm font-medium">JWT ✓</span>
-          </div>
-          {user?.name && (
-            <div className="flex justify-between py-2">
-              <span className="text-sm text-gray-500">Name:</span>
-              <span className="text-sm font-medium">{user.name}</span>
-            </div>
-          )}
-        </div>
-
-        <Button onClick={handleLogout} variant="secondary">Logout</Button>
-      </div>
-    </div>
-  );
+  return <Navigate to={getPortalPath(user.role as Role)} replace />;
 }

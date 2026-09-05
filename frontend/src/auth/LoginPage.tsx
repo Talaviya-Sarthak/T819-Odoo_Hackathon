@@ -21,12 +21,22 @@ import {
   Mail,
   Chrome,
   Loader2,
+  Users,
 } from "lucide-react";
 import AuthBackground from "./AuthBackground";
 import { login } from "../services/auth.api";
 import { useAuth } from "../context/AuthContext";
+import { getPortalPath } from "../config/roles";
+import type { Role } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+const DEMO_ACCOUNTS = [
+  { email: "sales@dealflow.demo", role: "SALES_REP", label: "Sales Rep", color: "border-blue-800/60 bg-blue-950/30 text-blue-400 hover:bg-blue-900/40" },
+  { email: "manager@dealflow.demo", role: "MANAGER_ADMIN", label: "Manager / Admin", color: "border-purple-800/60 bg-purple-950/30 text-purple-400 hover:bg-purple-900/40" },
+  { email: "ops@dealflow.demo", role: "OPS_FINANCE", label: "Ops / Finance", color: "border-emerald-800/60 bg-emerald-950/30 text-emerald-400 hover:bg-emerald-900/40" },
+  { email: "customer@dealflow.demo", role: "CUSTOMER", label: "Customer", color: "border-orange-800/60 bg-orange-950/30 text-orange-400 hover:bg-orange-900/40" },
+];
 
 interface LoginPageProps {
   onNavigateSignUp?: () => void;
@@ -44,6 +54,7 @@ export default function LoginPage({
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showDemo, setShowDemo] = useState(false);
 
   const navigate = useNavigate();
   const { login: authLogin } = useAuth();
@@ -56,9 +67,28 @@ export default function LoginPage({
     try {
       const data = await login({ email, password });
       authLogin(data.accessToken, data.refreshToken, data.user);
-      navigate("/dashboard");
+      const redirectPath = getPortalPath(data.user.role as Role);
+      navigate(redirectPath, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDemoLogin = async (demoEmail: string) => {
+    setError("");
+    setLoading(true);
+    setEmail(demoEmail);
+    setPassword("demo1234");
+
+    try {
+      const data = await login({ email: demoEmail, password: "demo1234" });
+      authLogin(data.accessToken, data.refreshToken, data.user);
+      const redirectPath = getPortalPath(data.user.role as Role);
+      navigate(redirectPath, { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Demo login failed");
     } finally {
       setLoading(false);
     }
@@ -94,15 +124,15 @@ export default function LoginPage({
       </CardHeader>
 
       <form onSubmit={handleSubmit}>
-        <CardContent className="grid gap-5">
+        <CardContent className="grid gap-4">
           {error && (
             <div className="rounded-lg border border-red-900/50 bg-red-950/40 p-2.5 text-xs text-red-400 text-center">
               {error}
             </div>
           )}
 
-          <div className="grid gap-2">
-            <Label htmlFor="email" className="text-zinc-300">
+          <div className="grid gap-1.5">
+            <Label htmlFor="email" className="text-xs text-zinc-300">
               Email
             </Label>
             <div className="relative">
@@ -119,8 +149,8 @@ export default function LoginPage({
             </div>
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="password" className="text-zinc-300">
+          <div className="grid gap-1.5">
+            <Label htmlFor="password" className="text-xs text-zinc-300">
               Password
             </Label>
             <div className="relative">
@@ -149,20 +179,20 @@ export default function LoginPage({
             </div>
           </div>
 
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-2">
               <Checkbox
                 id="remember"
                 className="border-zinc-700 data-[state=checked]:bg-zinc-50 data-[state=checked]:text-zinc-900"
               />
-              <Label htmlFor="remember" className="text-zinc-400 text-sm cursor-pointer">
+              <Label htmlFor="remember" className="text-zinc-400 text-xs cursor-pointer">
                 Remember me
               </Label>
             </div>
             <button
               type="button"
               onClick={handleForgotPasswordClick}
-              className="text-sm text-zinc-300 hover:text-zinc-100 transition-colors underline-offset-4 hover:underline"
+              className="text-xs text-zinc-300 hover:text-zinc-100 transition-colors underline-offset-4 hover:underline"
             >
               Forgot password?
             </button>
@@ -179,35 +209,65 @@ export default function LoginPage({
 
           <div className="relative">
             <Separator className="bg-zinc-800" />
-            <span className="absolute left-1/2 -translate-x-1/2 -top-3 bg-zinc-900/90 px-2 text-[11px] uppercase tracking-widest text-zinc-500">
+            <span className="absolute left-1/2 -translate-x-1/2 -top-2.5 bg-zinc-900/90 px-2 text-[10px] uppercase tracking-widest text-zinc-500">
               or
             </span>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <Button
               type="button"
               variant="outline"
               onClick={() => handleOAuth("github")}
-              className="h-10 rounded-lg border-zinc-800 bg-zinc-950 text-zinc-50 hover:bg-zinc-900/80 transition-colors"
+              className="h-9 rounded-lg border-zinc-800 bg-zinc-950 text-zinc-50 text-xs hover:bg-zinc-900/80 transition-colors"
             >
-              <Github className="h-4 w-4 mr-2" />
+              <Github className="h-3.5 w-3.5 mr-1.5" />
               GitHub
             </Button>
             <Button
               type="button"
               variant="outline"
               onClick={() => handleOAuth("google")}
-              className="h-10 rounded-lg border-zinc-800 bg-zinc-950 text-zinc-50 hover:bg-zinc-900/80 transition-colors"
+              className="h-9 rounded-lg border-zinc-800 bg-zinc-950 text-zinc-50 text-xs hover:bg-zinc-900/80 transition-colors"
             >
-              <Chrome className="h-4 w-4 mr-2" />
+              <Chrome className="h-3.5 w-3.5 mr-1.5" />
               Google
             </Button>
+          </div>
+
+          {/* Demo Accounts Toggle */}
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => setShowDemo(!showDemo)}
+              className="w-full flex items-center justify-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition-colors py-1"
+            >
+              <Users className="h-3.5 w-3.5" />
+              <span>{showDemo ? "Hide Demo Accounts" : "Quick Demo Logins"}</span>
+            </button>
+
+            {showDemo && (
+              <div className="mt-2 space-y-1.5 border border-zinc-800/80 bg-zinc-950/60 p-2 rounded-lg">
+                {DEMO_ACCOUNTS.map((demo) => (
+                  <button
+                    key={demo.email}
+                    type="button"
+                    onClick={() => handleDemoLogin(demo.email)}
+                    disabled={loading}
+                    className={`w-full flex items-center justify-between rounded-md border px-2.5 py-1.5 text-left text-xs transition-colors ${demo.color}`}
+                  >
+                    <span className="font-medium">{demo.label}</span>
+                    <span className="text-[10px] opacity-70 font-mono">{demo.email.split("@")[0]}</span>
+                  </button>
+                ))}
+                <p className="text-[10px] text-center text-zinc-500 pt-0.5">Password: demo1234</p>
+              </div>
+            )}
           </div>
         </CardContent>
       </form>
 
-      <CardFooter className="flex items-center justify-center text-sm text-zinc-400">
+      <CardFooter className="flex items-center justify-center text-xs text-zinc-400 pt-1 pb-4">
         Don't have an account?
         <button
           type="button"

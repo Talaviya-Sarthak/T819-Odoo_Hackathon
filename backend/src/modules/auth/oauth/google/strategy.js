@@ -27,11 +27,12 @@ if (config.GOOGLE_CLIENT_ID && config.GOOGLE_CLIENT_SECRET) {
           email,
           name: profile.displayName,
           avatar_url: profile.photos?.[0]?.value,
-          email_verified: true
+          email_verified: true,
+          role: 'CUSTOMER'
         });
       }
 
-      const token = jwtService.generateAccessToken({ id: user.id, email: user.email });
+      const token = jwtService.generateAccessToken({ id: user.id, email: user.email, role: user.role });
       const refresh = jwtService.generateRefreshToken({ id: user.id });
 
       return done(null, user, { accessToken: token, refreshToken: refresh });

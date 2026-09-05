@@ -1,11 +1,22 @@
+export type Role = 'SALES_REP' | 'MANAGER_ADMIN' | 'OPS_FINANCE' | 'CUSTOMER';
+
 export interface User {
   id: string;
   email: string;
   name?: string;
+  role: Role;
+  customer_id?: string;
+  status?: string;
   avatar_url?: string;
   email_verified?: boolean;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface NavItem {
+  label: string;
+  path: string;
+  icon: string;
 }
 
 export interface AuthState {
@@ -74,4 +85,5 @@ export interface OAuthButtonProps {
 
 export interface ProtectedRouteProps {
   children: React.ReactNode;
+  allowedRoles?: Role[];
 }
