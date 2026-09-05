@@ -54,16 +54,48 @@ export default function ApprovalStatusPage() {
   };
 
   const columns = [
-    { key: 'quotation_number', label: 'Quotation #', render: (r: ApprovalRequest) => r.quotation_number || r.quotation_id.slice(0, 8) },
-    { key: 'requested_by_name', label: 'Requested By', render: (r: ApprovalRequest) => r.requested_by_name || r.requested_by },
-    { key: 'reason', label: 'Reason', render: (r: ApprovalRequest) => <span className="truncate max-w-[200px] block">{r.reason}</span> },
+    {
+      key: 'quotation_number',
+      label: 'Quotation #',
+      render: (r: ApprovalRequest) => {
+        const qNum = (r as any).quotation?.quotationNumber || (r as any).quotationNumber || r.quotation_number;
+        const qId = (r as any).quotationId || r.quotation_id || r.id;
+        return qNum || (qId ? String(qId).slice(0, 8) : 'Quotation');
+      },
+    },
+    {
+      key: 'requested_by_name',
+      label: 'Requested By',
+      render: (r: ApprovalRequest) => {
+        return (r as any).quotation?.salesRep?.name || (r as any).user?.name || r.requested_by_name || r.requested_by || 'Sales Rep';
+      },
+    },
+    {
+      key: 'reason',
+      label: 'Reason',
+      render: (r: ApprovalRequest) => <span className="truncate max-w-[200px] block">{r.reason || '-'}</span>,
+    },
     {
       key: 'status',
       label: 'Status',
       render: (r: ApprovalRequest) => <StatusBadge status={r.status} type="approval" />,
     },
-    { key: 'discount_percent', label: 'Discount %', render: (r: ApprovalRequest) => r.discount_percent ? `${r.discount_percent}%` : '-' },
-    { key: 'created_at', label: 'Created', render: (r: ApprovalRequest) => new Date(r.created_at).toLocaleDateString() },
+    {
+      key: 'discount_percent',
+      label: 'Discount %',
+      render: (r: ApprovalRequest) => {
+        const disc = (r as any).discountPercent || r.discount_percent;
+        return disc ? `${disc}%` : '-';
+      },
+    },
+    {
+      key: 'created_at',
+      label: 'Created',
+      render: (r: ApprovalRequest) => {
+        const dt = r.created_at || (r as any).createdAt;
+        return dt ? new Date(dt).toLocaleDateString() : '-';
+      },
+    },
   ];
 
   return (
@@ -93,7 +125,9 @@ export default function ApprovalStatusPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-gray-500">Quotation</p>
-                <p className="font-medium text-gray-900">{selected.quotation_number || selected.quotation_id}</p>
+                <p className="font-medium text-gray-900">
+                  {(selected as any).quotation?.quotationNumber || (selected as any).quotationNumber || selected.quotation_number || (selected as any).quotationId || selected.quotation_id || '-'}
+                </p>
               </div>
               <div>
                 <p className="text-gray-500">Status</p>
@@ -101,19 +135,25 @@ export default function ApprovalStatusPage() {
               </div>
               <div>
                 <p className="text-gray-500">Requested By</p>
-                <p className="font-medium text-gray-900">{selected.requested_by_name || selected.requested_by}</p>
+                <p className="font-medium text-gray-900">
+                  {(selected as any).quotation?.salesRep?.name || (selected as any).user?.name || selected.requested_by_name || selected.requested_by || 'Sales Rep'}
+                </p>
               </div>
               <div>
                 <p className="text-gray-500">Assigned To</p>
-                <p className="font-medium text-gray-900">{selected.assigned_to_name || selected.assigned_to || '-'}</p>
+                <p className="font-medium text-gray-900">{(selected as any).approver?.name || selected.assigned_to_name || selected.assigned_to || '-'}</p>
               </div>
               <div>
                 <p className="text-gray-500">Discount %</p>
-                <p className="font-medium text-gray-900">{selected.discount_percent ? `${selected.discount_percent}%` : '-'}</p>
+                <p className="font-medium text-gray-900">
+                  {(selected as any).discountPercent || selected.discount_percent ? `${(selected as any).discountPercent || selected.discount_percent}%` : '-'}
+                </p>
               </div>
               <div>
                 <p className="text-gray-500">Created</p>
-                <p className="font-medium text-gray-900">{new Date(selected.created_at).toLocaleString()}</p>
+                <p className="font-medium text-gray-900">
+                  {selected.created_at || (selected as any).createdAt ? new Date(selected.created_at || (selected as any).createdAt).toLocaleString() : '-'}
+                </p>
               </div>
             </div>
             <div>

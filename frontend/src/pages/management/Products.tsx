@@ -23,7 +23,8 @@ export default function Products() {
     setLoading(true);
     try {
       const res = await getProducts();
-      setProducts(res.products);
+      const list = Array.isArray(res) ? res : res?.products || [];
+      setProducts(list);
     } catch {
       toast('Failed to load products', 'error');
     } finally {
@@ -33,14 +34,26 @@ export default function Products() {
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
-  const filtered = products.filter(
+  const list = Array.isArray(products) ? products : [];
+  const filtered = list.filter(
     (p) =>
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.sku.toLowerCase().includes(search.toLowerCase())
   );
 
   const openCreate = () => { setEditing(null); setForm(emptyProduct); setModalOpen(true); };
-  const openEdit = (p: Product) => { setEditing(p); setForm({ name: p.name, sku: p.sku, category_id: p.category_id, base_price: p.base_price, unit: p.unit, is_active: p.is_active }); setModalOpen(true); };
+  const openEdit = (p: Product) => {
+    setEditing(p);
+    setForm({
+      name: p.name,
+      sku: p.sku,
+      category_id: (p as any).categoryId || p.category_id || '',
+      base_price: Number((p as any).basePrice || p.base_price || 0),
+      unit: p.unit || 'unit',
+      is_active: (p as any).active ?? p.is_active ?? true,
+    });
+    setModalOpen(true);
+  };
 
   const handleSave = async () => {
     if (!form.name || !form.sku) { toast('Name and SKU are required', 'warning'); return; }
@@ -65,15 +78,39 @@ export default function Products() {
   const columns = [
     { key: 'sku', label: 'SKU' },
     { key: 'name', label: 'Name' },
-    { key: 'category_id', label: 'Category' },
-    { key: 'base_price', label: 'Base Price', render: (r: Product) => `$${r.base_price.toLocaleString()}` },
-    { key: 'unit', label: 'Unit' },
-    { key: 'is_active', label: 'Active', render: (r: Product) => (
-      <span className={`text-xs font-medium ${r.is_active ? 'text-green-600' : 'text-gray-400'}`}>{r.is_active ? 'Yes' : 'No'}</span>
-    )},
-    { key: 'actions', label: '', render: (r: Product) => (
-      <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100">Edit</button>
-    )},
+    {
+      key: 'category_id',
+      label: 'Category',
+      render: (r: Product) => (r as any).category?.name || (r as any).category || (r as any).categoryId || r.category_id || '-',
+    },
+    {
+      key: 'base_price',
+      label: 'Base Price',
+      render: (r: Product) => {
+        const price = Number((r as any).basePrice || r.base_price || 0);
+        return `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      },
+    },
+    { key: 'unit', label: 'Unit', render: (r: Product) => r.unit || 'unit' },
+    {
+      key: 'is_active',
+      label: 'Active',
+      render: (r: Product) => {
+        const active = (r as any).active ?? r.is_active ?? true;
+        return (
+          <span className={`text-xs font-medium ${active ? 'text-green-600' : 'text-gray-400'}`}>
+            {active ? 'Yes' : 'No'}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'actions',
+      label: '',
+      render: (r: Product) => (
+        <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100">Edit</button>
+      ),
+    },
   ];
 
   return (

@@ -30,7 +30,8 @@ export default function Orders() {
       const params: Record<string, string> = {};
       if (status && status !== 'ALL') params.status = status;
       const res = await getQuotations(params as { status?: QuotationStatus });
-      setQuotations(res.quotations.filter((q) => orderStatuses.includes(q.status)));
+      const list = Array.isArray(res) ? res : res?.quotations || [];
+      setQuotations(list.filter((q) => orderStatuses.includes(q.status)));
     } catch {
       toast('Failed to load orders', 'error');
     } finally {
@@ -43,15 +44,38 @@ export default function Orders() {
   }, [activeTab]);
 
   const columns = [
-    { key: 'quotation_number', label: 'Order #', render: (r: Quotation) => r.quotation_number || r.id.slice(0, 8) },
-    { key: 'customer_name', label: 'Customer', render: (r: Quotation) => r.customer_name || r.customer_id },
+    {
+      key: 'quotation_number',
+      label: 'Order #',
+      render: (r: Quotation) => (r as any).quotationNumber || r.quotation_number || (r.id ? r.id.slice(0, 8) : 'Order'),
+    },
+    {
+      key: 'customer_name',
+      label: 'Customer',
+      render: (r: Quotation) => (r as any).customer?.name || (r as any).customer?.company || r.customer_name || r.customer_id || '-',
+    },
     {
       key: 'status',
       label: 'Status',
       render: (r: Quotation) => <StatusBadge status={r.status} type="quotation" />,
     },
-    { key: 'grand_total', label: 'Total', render: (r: Quotation) => `${r.currency} ${r.grand_total.toLocaleString()}` },
-    { key: 'created_at', label: 'Date', render: (r: Quotation) => new Date(r.created_at).toLocaleDateString() },
+    {
+      key: 'grand_total',
+      label: 'Total',
+      render: (r: Quotation) => {
+        const curr = r.currency || (r as any).customer?.currency || 'USD';
+        const total = Number(r.grand_total || (r as any).totalAmount || 0);
+        return `${curr} ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      },
+    },
+    {
+      key: 'created_at',
+      label: 'Date',
+      render: (r: Quotation) => {
+        const dt = r.created_at || (r as any).createdAt;
+        return dt ? new Date(dt).toLocaleDateString() : '-';
+      },
+    },
   ];
 
   return (
@@ -70,7 +94,7 @@ export default function Orders() {
         data={quotations as unknown as Record<string, unknown>[]}
         loading={loading}
         emptyMessage="No orders found"
-        onRowClick={(r) => navigate(`/sales/quotations/${(r as Quotation).id}`)}
+        onRowClick={(r) => navigate(`/sales/quote-builder/${(r as Quotation).id}`)}
       />
     </div>
   );

@@ -538,6 +538,7 @@ model Invoice {
   discountAmount Decimal       @default(0) @map("discount_amount") @db.Decimal(12, 2)
   taxAmount      Decimal       @default(0) @map("tax_amount") @db.Decimal(12, 2)
   totalAmount    Decimal       @map("total_amount") @db.Decimal(12, 2)
+  amount         Decimal       @default(0) @db.Decimal(12, 2)
   amountPaid     Decimal       @default(0) @map("amount_paid") @db.Decimal(12, 2)
   balanceDue     Decimal       @default(0) @map("balance_due") @db.Decimal(12, 2)
   status         PaymentStatus @default(PENDING)

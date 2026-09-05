@@ -18,7 +18,10 @@ export default function AIAdvisor() {
 
   useEffect(() => {
     getQuotations()
-      .then((res) => setQuotations(res.quotations))
+      .then((res) => {
+        const list = Array.isArray(res) ? res : res?.quotations || [];
+        setQuotations(list);
+      })
       .catch(() => toast('Failed to load quotations', 'error'))
       .finally(() => setFetchingQuotations(false));
   }, []);
@@ -32,9 +35,11 @@ export default function AIAdvisor() {
     setLoading(true);
     try {
       const res = await getRecommendations(quotationId);
-      setRecommendations(res.recommendations);
+      const recs = Array.isArray(res) ? res : res?.recommendations || [];
+      setRecommendations(recs);
     } catch {
       toast('Failed to load recommendations', 'error');
+      setRecommendations([]);
     } finally {
       setLoading(false);
     }
@@ -60,10 +65,14 @@ export default function AIAdvisor() {
     }
   };
 
-  const quotationOptions = quotations.map((q) => ({
-    value: q.id,
-    label: `${q.quotation_number || q.id.slice(0, 8)} - ${q.customer_name || 'Customer'}`,
-  }));
+  const quotationOptions = (quotations || []).map((q) => {
+    const qNum = (q as any).quotationNumber || q.quotation_number || (q.id ? q.id.slice(0, 8) : 'Quote');
+    const cName = (q as any).customer?.name || (q as any).customer?.company || q.customer_name || 'Customer';
+    return {
+      value: q.id,
+      label: `${qNum} - ${cName}`,
+    };
+  });
 
   return (
     <div className="space-y-6">
