@@ -72,7 +72,7 @@ exports.getUserWithRole = async (userId) => {
   const result = await query(
     `SELECT u.*, r.name as role_name, r.display_name as role_display_name
      FROM users u
-     INNER JOIN roles r ON r.name = u.role
+     LEFT JOIN roles r ON r.name = u.role::text
      WHERE u.id = $1`,
     [userId]
   );
