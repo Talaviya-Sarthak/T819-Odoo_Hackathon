@@ -31,9 +31,9 @@ const registerSchema = {
     if (!data.password || typeof data.password !== 'string' || data.password.length < 8) {
       errors.push({ message: 'Password must be at least 8 characters' });
     }
-    // roleId is optional - if provided, must be a valid UUID
+    // roleId is optional - if provided, must be a string (UUID or role name)
     if (data.roleId !== undefined && data.roleId !== null && data.roleId !== '') {
-      if (typeof data.roleId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.roleId)) {
+      if (typeof data.roleId !== 'string' || data.roleId.trim().length === 0) {
         errors.push({ message: 'Invalid role selected' });
       }
     }

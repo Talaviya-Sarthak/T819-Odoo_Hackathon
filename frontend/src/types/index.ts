@@ -47,7 +47,8 @@ export interface PortalInfo {
 export interface RoleOption {
   id: string;
   name: string;
-  displayName: string;
+  displayName?: string;
+  display_name?: string;
   description?: string;
 }
 

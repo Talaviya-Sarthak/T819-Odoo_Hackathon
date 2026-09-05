@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Card,
@@ -22,11 +22,21 @@ import {
   User,
   Chrome,
   Loader2,
+  Shield,
+  ChevronDown,
 } from "lucide-react";
 import AuthBackground from "./AuthBackground";
-import { register } from "../services/auth.api";
+import { register, getPublicRoles } from "../services/auth.api";
+import type { RoleOption } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+const DEFAULT_ROLES: RoleOption[] = [
+  { id: "CUSTOMER", name: "CUSTOMER", displayName: "Customer", display_name: "Customer", description: "Request quotes and track orders" },
+  { id: "SALES_REP", name: "SALES_REP", displayName: "Sales Representative", display_name: "Sales Representative", description: "Create quotes and manage customer deals" },
+  { id: "OPS_FINANCE", name: "OPS_FINANCE", displayName: "Operations & Finance", display_name: "Operations & Finance", description: "Manage orders, invoices, and fulfillment" },
+  { id: "MANAGER_ADMIN", name: "MANAGER_ADMIN", displayName: "Manager / Admin", display_name: "Manager / Admin", description: "Approvals, pricing rules, and analytics" },
+];
 
 interface SignUpPageProps {
   onNavigateSignIn?: () => void;
@@ -44,10 +54,34 @@ export default function SignUpPage({
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [agreeTerms, setAgreeTerms] = useState(false);
+  const [roleId, setRoleId] = useState<string>("CUSTOMER");
+  const [roles, setRoles] = useState<RoleOption[]>(DEFAULT_ROLES);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let mounted = true;
+    getPublicRoles()
+      .then((data) => {
+        if (mounted && data.roles && data.roles.length > 0) {
+          setRoles(data.roles);
+          // Default to first role or customer
+          const customerRole = data.roles.find((r) => r.name === "CUSTOMER");
+          const first = customerRole || data.roles[0];
+          if (first) {
+            setRoleId(first.id || first.name);
+          }
+        }
+      })
+      .catch(() => {
+        // Fallback to default roles
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,7 +98,7 @@ export default function SignUpPage({
 
     setLoading(true);
     try {
-      await register({ name, email, password });
+      await register({ name, email, password, roleId });
       navigate("/verify-email", { state: { email } });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
@@ -87,7 +121,7 @@ export default function SignUpPage({
 
   const cardContent = (
     <Card className="card-animate w-full max-w-sm border-zinc-800 bg-zinc-900/70 backdrop-blur supports-[backdrop-filter]:bg-zinc-900/60 shadow-2xl">
-      <CardHeader className="px-5 py-3.5 space-y-0.5">
+      <CardHeader className="px-5 py-3 space-y-0.5">
         <CardTitle className="text-xl font-semibold">Create account</CardTitle>
         <CardDescription className="text-xs text-zinc-400">
           Get started with your free account
@@ -95,7 +129,7 @@ export default function SignUpPage({
       </CardHeader>
 
       <form onSubmit={handleSubmit}>
-        <CardContent className="px-5 py-0 grid gap-3">
+        <CardContent className="px-5 py-0 grid gap-2.5">
           {error && (
             <div className="rounded-lg border border-red-900/50 bg-red-950/40 p-2 text-xs text-red-400 text-center">
               {error}
@@ -138,7 +172,33 @@ export default function SignUpPage({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5">
+          {/* Role Selection Field */}
+          <div className="grid gap-1">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="role-select" className="text-xs text-zinc-300">
+                Account Role
+              </Label>
+              <span className="text-[10px] text-zinc-500 font-mono">Select portal access</span>
+            </div>
+            <div className="relative">
+              <Shield className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
+              <select
+                id="role-select"
+                value={roleId}
+                onChange={(e) => setRoleId(e.target.value)}
+                className="h-8.5 w-full rounded-lg pl-8 pr-8 text-xs bg-zinc-950 border border-zinc-800 text-zinc-50 focus:border-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-700 appearance-none cursor-pointer"
+              >
+                {roles.map((r) => (
+                  <option key={r.id || r.name} value={r.id || r.name} className="bg-zinc-950 text-zinc-50">
+                    {r.displayName || r.display_name} {r.description ? `— ${r.description}` : ""}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
             <div className="grid gap-1">
               <Label htmlFor="signup-password" className="text-xs text-zinc-300">
                 Password
@@ -225,7 +285,7 @@ export default function SignUpPage({
             className="w-full h-8.5 rounded-lg bg-zinc-50 text-zinc-900 hover:bg-zinc-200 text-xs font-medium transition-colors flex items-center justify-center gap-2"
           >
             {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {loading ? "Creating..." : "Create account"}
+            {loading ? "Creating account..." : "Create account"}
           </Button>
 
           <div className="relative">
