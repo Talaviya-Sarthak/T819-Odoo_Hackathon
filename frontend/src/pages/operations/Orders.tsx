@@ -58,9 +58,17 @@ export default function OperationsOrders() {
     try {
       setLoading(true);
       const data = await ordersApi.getAll({ status: statusFilter || undefined });
-      setOrders(data);
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray((data as any)?.orders)
+        ? (data as any).orders
+        : Array.isArray((data as any)?.salesOrders)
+        ? (data as any).salesOrders
+        : [];
+      setOrders(list);
     } catch {
       toast('Failed to load sales orders', 'error');
+      setOrders([]);
     } finally {
       setLoading(false);
     }
@@ -70,9 +78,16 @@ export default function OperationsOrders() {
     try {
       // Quotes ready for conversion
       const quotes = await quotationsApi.getAll({ status: 'CUSTOMER_CONFIRMED' });
-      setConfirmedQuotes(quotes);
+      const list = Array.isArray(quotes)
+        ? quotes
+        : Array.isArray((quotes as any)?.quotations)
+        ? (quotes as any).quotations
+        : Array.isArray((quotes as any)?.data)
+        ? (quotes as any).data
+        : [];
+      setConfirmedQuotes(list);
     } catch {
-      // Ignore if none
+      setConfirmedQuotes([]);
     }
   }
 
@@ -80,7 +95,8 @@ export default function OperationsOrders() {
     try {
       setConvertingQuoteId(quoteId);
       const order = await ordersApi.createFromQuotation(quoteId);
-      toast(`Sales Order ${order.orderNumber} successfully generated!`, 'success');
+      const orderNum = order?.orderNumber || order?.order_number || (order as any)?.order?.orderNumber || 'SO';
+      toast(`Sales Order ${orderNum} successfully generated!`, 'success');
       await loadOrders();
       await loadConfirmedQuotes();
     } catch (err: any) {
@@ -94,10 +110,11 @@ export default function OperationsOrders() {
     try {
       setGeneratingInvoice(true);
       const inv = await invoicesApi.createFromOrder(orderId);
-      toast(`Invoice ${inv.invoiceNumber} generated successfully!`, 'success');
+      const invNum = inv?.invoiceNumber || inv?.invoice_number || (inv as any)?.invoice?.invoiceNumber || 'INV';
+      toast(`Invoice ${invNum} generated successfully!`, 'success');
       // Refresh selected order
       const updated = await ordersApi.getById(orderId);
-      setSelectedOrder(updated);
+      setSelectedOrder(updated?.order || updated);
       await loadOrders();
     } catch (err: any) {
       toast(err?.message || 'Failed to create invoice', 'error');
@@ -106,18 +123,26 @@ export default function OperationsOrders() {
     }
   }
 
-  function openOrderDetails(order: SalesOrder) {
+  async function openOrderDetails(order: SalesOrder) {
     setSelectedOrder(order);
     setDetailsModalOpen(true);
+    try {
+      const full = await ordersApi.getById(order.id);
+      if (full) {
+        setSelectedOrder(full?.order || full);
+      }
+    } catch {
+      // keep initial order
+    }
   }
 
-  const filteredOrders = orders.filter((o) => {
+  const filteredOrders = (Array.isArray(orders) ? orders : []).filter((o) => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
-      o.orderNumber?.toLowerCase().includes(q) ||
-      o.customer?.name?.toLowerCase().includes(q) ||
-      o.customer?.company?.toLowerCase().includes(q)
+      o?.orderNumber?.toLowerCase().includes(q) ||
+      o?.customer?.name?.toLowerCase().includes(q) ||
+      o?.customer?.company?.toLowerCase().includes(q)
     );
   });
 
@@ -156,10 +181,10 @@ export default function OperationsOrders() {
                 className="p-4 rounded-xl bg-slate-900/90 border border-slate-700/80 flex items-center justify-between gap-3 text-xs"
               >
                 <div>
-                  <div className="font-bold text-white text-sm">{q.quotation_number || q.quotationNumber}</div>
+                  <div className="font-bold text-white text-sm">{q.quotationNumber || q.quotation_number || q.id?.slice(0, 8)}</div>
                   <div className="text-slate-300 font-medium">{q.customer?.name || q.customer_name || 'Customer'}</div>
                   <div className="font-mono font-bold text-emerald-400 mt-1">
-                    ${Number(q.grand_total || q.totalAmount || 0).toLocaleString()}
+                    ${Number(q.grandTotal || q.grand_total || q.totalAmount || q.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </div>
                 </div>
                 <button
@@ -398,7 +423,7 @@ export default function OperationsOrders() {
               <div className="flex items-center gap-2">
                 {selectedOrder.invoices && selectedOrder.invoices.length > 0 ? (
                   <span className="text-xs text-emerald-400 font-medium">
-                    ✓ Invoice Generated: {selectedOrder.invoices[0].invoiceNumber}
+                    ✓ Invoice Generated: {selectedOrder.invoices[0]?.invoiceNumber}
                   </span>
                 ) : (
                   <button
