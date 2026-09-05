@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../components/Toast';
 import { approvalsApi, type PendingApprovalItem } from '../../api';
 import { 
   CheckCircle2, 
@@ -16,6 +17,7 @@ import {
 
 export default function Approvals() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [approvals, setApprovals] = useState<PendingApprovalItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedApproval, setSelectedApproval] = useState<PendingApprovalItem | null>(null);
@@ -29,7 +31,7 @@ export default function Approvals() {
     setStatusMessage(null);
     try {
       const data = await approvalsApi.getPending();
-      setApprovals(data || []);
+      setApprovals(Array.isArray(data) ? data : (data as any)?.approvals || []);
     } catch (err: any) {
       setStatusMessage({ type: 'error', text: err.message || 'Failed to fetch pending approvals' });
     } finally {
@@ -46,6 +48,7 @@ export default function Approvals() {
 
     if ((actionModal === 'reject' || actionModal === 'return') && !comment.trim()) {
       setStatusMessage({ type: 'error', text: 'Comments are mandatory when rejecting or returning for revision.' });
+      toast('Comments are mandatory for this action', 'warning');
       return;
     }
 
@@ -55,12 +58,15 @@ export default function Approvals() {
     try {
       if (actionModal === 'approve') {
         await approvalsApi.approve(selectedApproval.id, comment);
+        toast('Quotation approved successfully!', 'success');
         setStatusMessage({ type: 'success', text: `Quotation approval step successfully granted.` });
       } else if (actionModal === 'reject') {
         await approvalsApi.reject(selectedApproval.id, comment);
+        toast('Quotation rejected', 'info');
         setStatusMessage({ type: 'success', text: `Quotation rejected.` });
       } else if (actionModal === 'return') {
         await approvalsApi.returnForRevision(selectedApproval.id, comment);
+        toast('Quotation returned for revision', 'info');
         setStatusMessage({ type: 'success', text: `Quotation returned to sales rep for revision.` });
       }
 
@@ -70,6 +76,7 @@ export default function Approvals() {
       // Authoritative reload
       await fetchPendingApprovals();
     } catch (err: any) {
+      toast(err.message || 'Action failed.', 'error');
       setStatusMessage({ type: 'error', text: err.message || 'Action failed.' });
     } finally {
       setProcessing(false);
@@ -180,12 +187,28 @@ export default function Approvals() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => setSelectedApproval(item)}
-                          className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 transition-colors"
-                        >
-                          Review <ArrowRight className="h-3.5 w-3.5" />
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => setSelectedApproval(item)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                          >
+                            Review
+                          </button>
+                          <button
+                            onClick={async () => {
+                              try {
+                                await approvalsApi.approve(item.id, 'Approved via quick action');
+                                toast('Quotation approved successfully!', 'success');
+                                fetchPendingApprovals();
+                              } catch (err: any) {
+                                toast(err.message || 'Approval failed', 'error');
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700 transition-colors"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Approve
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -218,6 +241,20 @@ export default function Approvals() {
                 ✕
               </button>
             </div>
+
+            {/* In-Modal Alert Message */}
+            {statusMessage && (
+              <div
+                className={`flex items-center justify-between rounded-lg p-3 text-xs font-semibold ${
+                  statusMessage.type === 'success'
+                    ? 'border border-emerald-200 bg-emerald-50 text-emerald-800'
+                    : 'border border-rose-200 bg-rose-50 text-rose-800'
+                }`}
+              >
+                <span>{statusMessage.text}</span>
+                <button onClick={() => setStatusMessage(null)} className="underline font-bold">Dismiss</button>
+              </div>
+            )}
 
             {/* Risk & Reason Header */}
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">

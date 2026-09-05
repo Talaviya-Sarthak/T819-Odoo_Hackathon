@@ -10,7 +10,7 @@ const billingService = require('../billing/billing.service');
 const { sendSuccess } = require('../../utils/response');
 
 router.use(authenticate);
-router.use(requireRole(['OPS_FINANCE', 'ADMIN', 'MANAGER_ADMIN', 'SALES_MANAGER']));
+router.use(requireRole(['OPERATIONS', 'FINANCE', 'OPS_FINANCE', 'ADMIN', 'MANAGER_ADMIN', 'SALES_MANAGER']));
 
 router.get('/dashboard', async (req, res, next) => {
   try {

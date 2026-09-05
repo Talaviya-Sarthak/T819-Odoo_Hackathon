@@ -43,6 +43,7 @@ exports.createInvoiceFromOrder = async (salesOrderId, user = null) => {
         discountAmount: order.discountAmount,
         taxAmount: order.taxAmount,
         totalAmount: order.totalAmount,
+        amount: order.totalAmount,
         amountPaid: 0,
         balanceDue: order.totalAmount,
         status: 'PENDING',
@@ -112,6 +113,7 @@ exports.createInvoiceFromSchedule = async (scheduleId, user = null) => {
         discountAmount: 0,
         taxAmount: 0,
         totalAmount: schedule.amount,
+        amount: schedule.amount,
         amountPaid: 0,
         balanceDue: schedule.amount,
         status: 'PENDING',
@@ -347,7 +349,18 @@ exports.listSubscriptions = async ({ user = null, customerId, status } = {}) => 
   const where = {};
 
   if (user && user.role === 'CUSTOMER') {
-    const userCustId = user.customerId || user.customer_id;
+    let userCustId = user.customerId || user.customer_id;
+    if (!userCustId) {
+      const cust = await prisma.customer.findFirst({
+        where: {
+          OR: [
+            { email: user.email },
+            { ownerId: user.id },
+          ],
+        },
+      });
+      if (cust) userCustId = cust.id;
+    }
     if (userCustId) where.customerId = userCustId;
     else return [];
   } else if (customerId) {

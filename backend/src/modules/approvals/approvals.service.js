@@ -109,15 +109,21 @@ exports.approve = async (id, user, comments = '') => {
   if (!request) throw new AppError('Approval request not found', 404);
   if (request.status !== 'PENDING') throw new AppError(`Approval request is already ${request.status}`, 400);
 
-  // Security Rule: SALES_REP cannot approve their own quotation unless explicitly ADMIN
-  if (request.quotation.salesRepId === user.id && user.role !== 'ADMIN') {
+  // Security Rule: SALES_REP cannot approve their own quotation unless explicitly ADMIN or MANAGER
+  if (request.quotation.salesRepId === user.id && !['ADMIN', 'SALES_MANAGER', 'MANAGER_ADMIN'].includes(user.role)) {
     throw new AppError('Sales representatives cannot approve their own quotation', 403);
   }
 
   // Security Rule: Approver role verification
-  const isAuthorizedRole = user.role === request.requiredRole || user.role === 'ADMIN';
+  const isAuthorizedRole = 
+    user.role === request.requiredRole || 
+    user.role === 'ADMIN' || 
+    user.role === 'MANAGER_ADMIN' ||
+    (user.role === 'SALES_MANAGER' && (request.requiredRole === 'SALES_MANAGER' || request.requiredRole === 'SALES_REP')) ||
+    (user.role === 'FINANCE' && request.requiredRole === 'FINANCE');
+
   if (!isAuthorizedRole) {
-    throw new AppError(`Step ${request.currentStep} requires approval by ${request.requiredRole}`, 403);
+    throw new AppError(`Step ${request.currentStep} requires approval by ${request.requiredRole} (your role: ${user.role})`, 403);
   }
 
   const isFinalStep = request.currentStep >= request.totalSteps;
@@ -222,12 +228,17 @@ exports.reject = async (id, user, comments = '') => {
   if (!request) throw new AppError('Approval request not found', 404);
   if (request.status !== 'PENDING') throw new AppError(`Approval request is already ${request.status}`, 400);
 
-  // Security Rule: SALES_REP cannot reject/approve their own quotation
-  if (request.quotation.salesRepId === user.id && user.role !== 'ADMIN') {
+  // Security Rule: SALES_REP cannot reject/approve their own quotation unless MANAGER/ADMIN
+  if (request.quotation.salesRepId === user.id && !['ADMIN', 'SALES_MANAGER', 'MANAGER_ADMIN'].includes(user.role)) {
     throw new AppError('Sales representatives cannot review their own quotation', 403);
   }
 
-  const isAuthorizedRole = user.role === request.requiredRole || user.role === 'ADMIN' || user.role === 'SALES_MANAGER';
+  const isAuthorizedRole = 
+    user.role === request.requiredRole || 
+    user.role === 'ADMIN' || 
+    user.role === 'MANAGER_ADMIN' ||
+    user.role === 'SALES_MANAGER' ||
+    user.role === 'FINANCE';
   if (!isAuthorizedRole) {
     throw new AppError('You do not have permission to reject this quotation', 403);
   }
@@ -284,11 +295,16 @@ exports.returnForRevision = async (id, user, comments = '') => {
   if (!request) throw new AppError('Approval request not found', 404);
   if (request.status !== 'PENDING') throw new AppError(`Approval request is already ${request.status}`, 400);
 
-  if (request.quotation.salesRepId === user.id && user.role !== 'ADMIN') {
+  if (request.quotation.salesRepId === user.id && !['ADMIN', 'SALES_MANAGER', 'MANAGER_ADMIN'].includes(user.role)) {
     throw new AppError('Sales representatives cannot review their own quotation', 403);
   }
 
-  const isAuthorizedRole = user.role === request.requiredRole || user.role === 'ADMIN' || user.role === 'SALES_MANAGER';
+  const isAuthorizedRole = 
+    user.role === request.requiredRole || 
+    user.role === 'ADMIN' || 
+    user.role === 'MANAGER_ADMIN' ||
+    user.role === 'SALES_MANAGER' ||
+    user.role === 'FINANCE';
   if (!isAuthorizedRole) {
     throw new AppError('You do not have permission to return this quotation', 403);
   }
