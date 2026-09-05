@@ -1,12 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './components/Toast';
-import ProtectedRoute from './routes/ProtectedRoute';
 import RoleRoute from './routes/RoleRoute';
-import Login from './auth/Login';
-import Register from './auth/Register';
+import LoginPage from './auth/LoginPage';
+import SignUpPage from './auth/SignUpPage';
 import VerifyOTP from './auth/VerifyOTP';
-import ForgotPassword from './auth/ForgotPassword';
+import ForgotPasswordPage from './auth/ForgotPasswordPage';
 import ResetPassword from './auth/ResetPassword';
 import Callback from './auth/Callback';
 import Unauthorized from './pages/Unauthorized';
@@ -40,6 +39,8 @@ import Users from './pages/management/Users';
 import OperationsDashboard from './pages/operations/Dashboard';
 import OperationsOrders from './pages/operations/Orders';
 import Fulfillment from './pages/operations/Fulfillment';
+import Inventory from './pages/operations/Inventory';
+import Backorders from './pages/operations/Backorders';
 import OperationsWarehouses from './pages/operations/Warehouses';
 import Invoices from './pages/operations/Invoices';
 import Payments from './pages/operations/Payments';
@@ -58,13 +59,13 @@ function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <BrowserRouter>
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
             {/* Public routes */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<SignUpPage />} />
             <Route path="/verify-email" element={<VerifyOTP />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/auth/callback" element={<Callback />} />
             <Route path="/unauthorized" element={<Unauthorized />} />
@@ -73,7 +74,7 @@ function App() {
             <Route
               path="/sales"
               element={
-                <RoleRoute allowedRoles={['SALES_REP']}>
+                <RoleRoute allowedRoles={['SALES_REP', 'SALES_MANAGER', 'ADMIN']}>
                   <AppShell portalName="Sales Portal" />
                 </RoleRoute>
               }
@@ -94,7 +95,7 @@ function App() {
             <Route
               path="/management"
               element={
-                <RoleRoute allowedRoles={['MANAGER_ADMIN']}>
+                <RoleRoute allowedRoles={['SALES_MANAGER', 'FINANCE', 'ADMIN', 'MANAGER_ADMIN']}>
                   <AppShell portalName="Management Portal" />
                 </RoleRoute>
               }
@@ -118,7 +119,7 @@ function App() {
             <Route
               path="/operations"
               element={
-                <RoleRoute allowedRoles={['OPS_FINANCE']}>
+                <RoleRoute allowedRoles={['OPERATIONS', 'FINANCE', 'ADMIN', 'OPS_FINANCE', 'MANAGER_ADMIN']}>
                   <AppShell portalName="Operations & Finance Portal" />
                 </RoleRoute>
               }
@@ -126,6 +127,8 @@ function App() {
               <Route path="dashboard" element={<OperationsDashboard />} />
               <Route path="orders" element={<OperationsOrders />} />
               <Route path="fulfillment" element={<Fulfillment />} />
+              <Route path="inventory" element={<Inventory />} />
+              <Route path="backorders" element={<Backorders />} />
               <Route path="warehouses" element={<OperationsWarehouses />} />
               <Route path="invoices" element={<Invoices />} />
               <Route path="payments" element={<Payments />} />

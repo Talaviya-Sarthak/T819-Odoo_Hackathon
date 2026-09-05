@@ -34,7 +34,8 @@ export default function DiscountRequests() {
     setLoading(true);
     try {
       const res = await getQuotations();
-      setQuotations(res.quotations.filter((q) => q.discount_total > 0));
+      const list = Array.isArray(res) ? res : res?.quotations || [];
+      setQuotations(list.filter((q) => Number((q as any).discountAmount || q.discount_total || 0) > 0));
     } catch {
       toast('Failed to load quotations', 'error');
     } finally {
@@ -47,7 +48,9 @@ export default function DiscountRequests() {
   const handleCheckDiscount = async (q: Quotation) => {
     setChecking(q.id);
     try {
-      const res = await checkDiscount(q.id, { customer_id: q.customer_id, total: q.grand_total });
+      const custId = q.customer_id || (q as any).customerId;
+      const total = Number(q.grand_total || (q as any).totalAmount || 0);
+      const res = await checkDiscount(q.id, { customer_id: custId, total });
       if (res.eligible) {
         toast(`Discount eligible. Max: ${res.max_discount}%`, 'success');
       } else {
@@ -61,16 +64,36 @@ export default function DiscountRequests() {
   };
 
   const discountColumns = [
-    { key: 'quotation_number', label: 'Quote #', render: (r: Quotation) => r.quotation_number || r.id.slice(0, 8) },
-    { key: 'customer_name', label: 'Customer', render: (r: Quotation) => r.customer_name || r.customer_id },
+    {
+      key: 'quotation_number',
+      label: 'Quote #',
+      render: (r: Quotation) => (r as any).quotationNumber || r.quotation_number || (r.id ? r.id.slice(0, 8) : 'Quote'),
+    },
+    {
+      key: 'customer_name',
+      label: 'Customer',
+      render: (r: Quotation) => (r as any).customer?.name || (r as any).customer?.company || r.customer_name || r.customer_id || '-',
+    },
     {
       key: 'discount_total',
       label: 'Discount',
-      render: (r: Quotation) => (
-        <span className="text-red-600 font-medium">-{r.currency} {r.discount_total.toLocaleString()}</span>
-      ),
+      render: (r: Quotation) => {
+        const curr = r.currency || (r as any).customer?.currency || 'USD';
+        const disc = Number((r as any).discountAmount || r.discount_total || 0);
+        return (
+          <span className="text-red-600 font-medium">-{curr} {disc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        );
+      },
     },
-    { key: 'grand_total', label: 'Total', render: (r: Quotation) => `${r.currency} ${r.grand_total.toLocaleString()}` },
+    {
+      key: 'grand_total',
+      label: 'Total',
+      render: (r: Quotation) => {
+        const curr = r.currency || (r as any).customer?.currency || 'USD';
+        const total = Number(r.grand_total || (r as any).totalAmount || 0);
+        return `${curr} ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      },
+    },
     {
       key: 'actions',
       label: 'Action',

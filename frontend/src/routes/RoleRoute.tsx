@@ -12,8 +12,8 @@ export default function RoleRoute({ children, allowedRoles }: RoleRouteProps) {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-        <div className="h-8 w-8 animate-spin rounded-full border-3 border-gray-200 border-t-gray-900" />
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background">
+        <div className="h-7 w-7 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
   }
@@ -22,7 +22,25 @@ export default function RoleRoute({ children, allowedRoles }: RoleRouteProps) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  if (!allowedRoles.includes(user.role)) {
+  const isAdmin = user.role === 'ADMIN';
+  const isCustomerRoute = allowedRoles.includes('CUSTOMER');
+
+  // Customer role can ONLY access customer routes
+  if (user.role === 'CUSTOMER') {
+    if (!isCustomerRoute) {
+      return <Navigate to="/customer/dashboard" replace />;
+    }
+    return <>{children}</>;
+  }
+
+  // Internal users should not access customer portal unless admin
+  if (isCustomerRoute && (user.role as string) !== 'CUSTOMER' && !isAdmin) {
+    return <Navigate to="/unauthorized" replace />;
+  }
+
+  const hasAccess = allowedRoles.includes(user.role) || isAdmin;
+
+  if (!hasAccess) {
     return <Navigate to="/unauthorized" replace />;
   }
 

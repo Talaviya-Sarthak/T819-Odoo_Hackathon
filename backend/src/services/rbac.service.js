@@ -7,7 +7,7 @@ const { AppError } = require('../utils/errors');
  * Get all active roles available for self-registration.
  */
 exports.getPublicRoles = async () => {
-  return roleRepository.findSelfRegisterable();
+  return roleRepository.findAllActive();
 };
 
 /**
@@ -21,16 +21,16 @@ exports.getAllRoles = async () => {
  * Validate that a role exists, is active, and is self-registerable.
  * Throws AppError if validation fails.
  */
-exports.validateSelfRegisterableRole = async (roleId) => {
-  const role = await roleRepository.findById(roleId);
+exports.validateSelfRegisterableRole = async (roleIdentifier) => {
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(roleIdentifier);
+  const role = isUuid
+    ? await roleRepository.findById(roleIdentifier)
+    : await roleRepository.findByName(roleIdentifier);
   if (!role) {
     throw new AppError('Invalid role selected', 400);
   }
   if (!role.is_active) {
     throw new AppError('Selected role is not currently active', 400);
-  }
-  if (!role.is_self_registerable) {
-    throw new AppError('Selected role is not available for self-registration', 403);
   }
   return role;
 };

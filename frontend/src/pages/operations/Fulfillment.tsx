@@ -1,191 +1,513 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import DataTable from '../../components/DataTable';
-import StatusBadge from '../../components/StatusBadge';
-import Button from '../../components/Button';
-import Modal from '../../components/Modal';
-import Select from '../../components/Select';
-import Input from '../../components/Input';
+import { fulfillmentApi, ordersApi, warehousesApi } from '../../api';
 import { useToast } from '../../components/Toast';
-import { getFulfillment, allocateStock, overrideStock } from '../../services/fulfillment.api';
-import { getQuotations } from '../../services/quotations.api';
-import type { Quotation, FulfillmentOrder } from '../../types';
 
-interface FulfillmentRow extends Record<string, unknown> {
-  quotationId: string;
-  quotationNumber: string;
-  warehouse: string;
-  status: string;
-  shippingCost: string;
-  expectedDelivery: string;
+interface FulfillmentLine {
+  id: string;
+  salesOrderLineId: string;
+  quantityToFulfill: number;
+  quantityFulfilled: number;
+  salesOrderLine?: {
+    quantity: number;
+    fulfilledQuantity?: number;
+    product?: { name: string; sku: string };
+  };
+}
+
+interface FulfillmentRecord {
+  id: string;
+  fulfillmentNumber?: string;
+  salesOrderId: string;
+  warehouseId: string;
+  status: 'PENDING' | 'ALLOCATED' | 'PARTIALLY_FULFILLED' | 'FULFILLED' | 'CANCELLED';
+  trackingNumber?: string;
+  shippedAt?: string;
+  createdAt: string;
+  warehouse?: { id: string; name: string; code: string };
+  salesOrder?: {
+    id: string;
+    orderNumber: string;
+    customer?: { name: string; company?: string };
+    lines?: Array<{
+      id: string;
+      quantity: number;
+      fulfilledQuantity?: number;
+      product?: { name: string; sku: string; isService?: boolean };
+    }>;
+  };
+  lines?: FulfillmentLine[];
 }
 
 export default function Fulfillment() {
-  const [rows, setRows] = useState<FulfillmentRow[]>([]);
+  const [fulfillments, setFulfillments] = useState<FulfillmentRecord[]>([]);
+  const [warehouses, setWarehouses] = useState<Array<{ id: string; name: string; code: string }>>([]);
+  const [pendingOrders, setPendingOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState('');
   const [searchParams] = useSearchParams();
-  const [allocateModalOpen, setAllocateModalOpen] = useState(false);
-  const [overrideModalOpen, setOverrideModalOpen] = useState(false);
-  const [selectedQuotation, setSelectedQuotation] = useState<string>('');
-  const [warehouseId, setWarehouseId] = useState('');
-  const [quantity, setQuantity] = useState('1');
-  const [reason, setReason] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+
+  // Create Fulfillment Modal State
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState('');
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState('');
+  const [lineAllocations, setLineAllocations] = useState<{ [lineId: string]: number }>({});
+  const [creating, setCreating] = useState(false);
+
+  // Ship / Complete Modal State
+  const [shipModalOpen, setShipModalOpen] = useState(false);
+  const [activeFulfillmentId, setActiveFulfillmentId] = useState<string | null>(null);
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [shipping, setShipping] = useState(false);
+
   const { toast } = useToast();
 
   useEffect(() => {
-    loadFulfillments();
-  }, []);
+    loadData();
+  }, [statusFilter]);
 
-  async function loadFulfillments() {
+  useEffect(() => {
+    const orderIdParam = searchParams.get('orderId');
+    if (orderIdParam && pendingOrders.length > 0) {
+      const matched = pendingOrders.find((o) => o.id === orderIdParam);
+      if (matched) {
+        handleOpenCreateForOrder(matched);
+      }
+    }
+  }, [searchParams, pendingOrders]);
+
+  async function loadData() {
     try {
       setLoading(true);
-      const quotRes = await getQuotations({ status: 'ORDER_CONFIRMED', limit: 100 });
-      const results: FulfillmentRow[] = [];
+      const [fList, whList, oList] = await Promise.all([
+        fulfillmentApi.getAll({ status: statusFilter || undefined }),
+        warehousesApi.getAll(),
+        ordersApi.getAll({ status: 'ORDER_CONFIRMED' }),
+      ]);
+      setFulfillments(fList);
+      setWarehouses(whList);
+      setPendingOrders(oList);
 
-      for (const q of quotRes.quotations) {
-        try {
-          const fRes = await getFulfillment(q.id);
-          const f = fRes.fulfillment;
-          const mainWarehouse = f.lines?.[0]?.warehouse_name || 'Unassigned';
-          results.push({
-            quotationId: q.id,
-            quotationNumber: q.id.slice(0, 8).toUpperCase(),
-            warehouse: mainWarehouse,
-            status: f.status,
-            shippingCost: `${q.currency} 0.00`,
-            expectedDelivery: '—',
-          });
-        } catch {
-          results.push({
-            quotationId: q.id,
-            quotationNumber: q.id.slice(0, 8).toUpperCase(),
-            warehouse: 'Not allocated',
-            status: 'PENDING',
-            shippingCost: '—',
-            expectedDelivery: '—',
-          });
-        }
+      if (whList.length > 0 && !selectedWarehouseId) {
+        setSelectedWarehouseId(whList[0].id);
       }
-      setRows(results);
     } catch {
-      toast('Failed to load fulfillment data', 'error');
+      toast('Failed to load fulfillment operations data', 'error');
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleAllocate() {
-    if (!selectedQuotation || !warehouseId) return;
+  function handleOpenCreateForOrder(order: any) {
+    setSelectedOrderId(order.id);
+    const initialAlloc: { [lineId: string]: number } = {};
+    if (order.lines) {
+      for (const line of order.lines) {
+        const remaining = line.quantity - (line.fulfilledQuantity || 0);
+        initialAlloc[line.id] = remaining > 0 ? remaining : 0;
+      }
+    }
+    setLineAllocations(initialAlloc);
+    setCreateModalOpen(true);
+  }
+
+  async function handleCreateFulfillment(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedOrderId || !selectedWarehouseId) return;
+
+    const linesPayload = Object.entries(lineAllocations)
+      .filter(([_, qty]) => qty > 0)
+      .map(([salesOrderLineId, quantityToFulfill]) => ({
+        salesOrderLineId,
+        quantityToFulfill,
+      }));
+
+    if (linesPayload.length === 0) {
+      toast('Please allocate at least 1 unit to fulfill', 'error');
+      return;
+    }
+
     try {
-      setSubmitting(true);
-      await allocateStock(selectedQuotation, {
-        lines: [{ quotation_line_id: 'default', quantity: Number(quantity), warehouse_id: warehouseId }],
+      setCreating(true);
+      const res = await fulfillmentApi.create({
+        salesOrderId: selectedOrderId,
+        warehouseId: selectedWarehouseId,
+        lines: linesPayload,
       });
-      toast('Stock allocated successfully', 'success');
-      setAllocateModalOpen(false);
-      loadFulfillments();
-    } catch {
-      toast('Failed to allocate stock', 'error');
+
+      if (res.backordersCreated && res.backordersCreated.length > 0) {
+        toast(`Fulfillment created with ${res.backordersCreated.length} backorder shortage record(s)`, 'info');
+      } else {
+        toast('Fulfillment order created and inventory reserved!', 'success');
+      }
+
+      setCreateModalOpen(false);
+      await loadData();
+    } catch (err: any) {
+      toast(err?.message || 'Failed to create fulfillment', 'error');
     } finally {
-      setSubmitting(false);
+      setCreating(false);
     }
   }
 
-  async function handleOverride() {
-    if (!selectedQuotation || !warehouseId || !reason) return;
+  function openShipModal(fulfillmentId: string) {
+    setActiveFulfillmentId(fulfillmentId);
+    setTrackingNumber(`TRK-${Date.now().toString().slice(-8)}`);
+    setShipModalOpen(true);
+  }
+
+  async function handleConfirmShip(e: React.FormEvent) {
+    e.preventDefault();
+    if (!activeFulfillmentId) return;
+
     try {
-      setSubmitting(true);
-      await overrideStock(selectedQuotation, {
-        lines: [{ quotation_line_id: 'default', quantity: Number(quantity), warehouse_id: warehouseId }],
-        reason,
-      });
-      toast('Stock override applied', 'success');
-      setOverrideModalOpen(false);
-      setReason('');
-      loadFulfillments();
-    } catch {
-      toast('Failed to override stock', 'error');
+      setShipping(true);
+      await fulfillmentApi.fulfill(activeFulfillmentId, { trackingNumber });
+      toast('Shipment dispatched and stock released from reservations!', 'success');
+      setShipModalOpen(false);
+      await loadData();
+    } catch (err: any) {
+      toast(err?.message || 'Failed to complete shipment', 'error');
     } finally {
-      setSubmitting(false);
+      setShipping(false);
     }
   }
 
-  function openAllocate(quotationId: string) {
-    setSelectedQuotation(quotationId);
-    setWarehouseId('');
-    setQuantity('1');
-    setAllocateModalOpen(true);
-  }
-
-  function openOverride(quotationId: string) {
-    setSelectedQuotation(quotationId);
-    setWarehouseId('');
-    setQuantity('1');
-    setReason('');
-    setOverrideModalOpen(true);
-  }
-
-  const columns = [
-    { key: 'quotationNumber', label: 'Quotation #' },
-    { key: 'warehouse', label: 'Warehouse' },
-    { key: 'status', label: 'Status', render: (row: FulfillmentRow) => <StatusBadge status={row.status as string} type="fulfillment" /> },
-    { key: 'shippingCost', label: 'Shipping Cost' },
-    { key: 'expectedDelivery', label: 'Expected Delivery' },
-    {
-      key: 'actions',
-      label: 'Actions',
-      render: (row: FulfillmentRow) => (
-        <div className="flex gap-2">
-          {(row.status === 'PENDING' || row.status === 'Not allocated') && (
-            <Button variant="secondary" onClick={(e) => { e.stopPropagation(); openAllocate(row.quotationId); }}>
-              Allocate Stock
-            </Button>
-          )}
-          <Button variant="secondary" onClick={(e) => { e.stopPropagation(); openOverride(row.quotationId); }}>
-            Override
-          </Button>
-        </div>
-      ),
-    },
-  ];
+  const selectedOrderObj = pendingOrders.find((o) => o.id === selectedOrderId);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Fulfillment Tracking</h1>
-        <p className="text-sm text-gray-500">Track and manage order fulfillment</p>
+    <div className="space-y-8 animate-fadeIn">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
+            <span className="p-2 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-500 text-white shadow-lg shadow-cyan-500/30">
+              🚚
+            </span>
+            Fulfillment & Multi-Warehouse Allocation
+          </h1>
+          <p className="mt-1 text-sm text-slate-400">
+            Allocate hardware from Ahmedabad or Vadodara, trigger partial fulfillment, and dispatch shipments.
+          </p>
+        </div>
+
+        <button
+          onClick={() => {
+            if (pendingOrders.length > 0) {
+              handleOpenCreateForOrder(pendingOrders[0]);
+            } else {
+              toast('No orders currently pending fulfillment', 'info');
+            }
+          }}
+          className="px-4 py-2.5 rounded-xl font-bold text-sm text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-2 self-start sm:self-auto"
+        >
+          <span>➕</span> New Allocation
+        </button>
       </div>
 
-      <DataTable
-        columns={columns}
-        data={rows}
-        loading={loading}
-        emptyMessage="No fulfillment orders found"
-      />
-
-      <Modal isOpen={allocateModalOpen} onClose={() => setAllocateModalOpen(false)} title="Allocate Stock">
-        <div className="space-y-4">
-          <Input label="Warehouse ID" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} placeholder="Enter warehouse ID" />
-          <Input label="Quantity" type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setAllocateModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleAllocate} loading={submitting}>Allocate</Button>
+      {/* Pending Orders Ready to Fulfill */}
+      {pendingOrders.length > 0 && (
+        <div className="rounded-2xl border border-indigo-500/30 bg-slate-900/70 p-5 backdrop-blur-xl">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-indigo-300">
+              Orders Awaiting Dispatch ({pendingOrders.length})
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {pendingOrders.map((order) => (
+              <div
+                key={order.id}
+                className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between text-xs"
+              >
+                <div>
+                  <div className="font-bold text-white text-sm">{order.orderNumber}</div>
+                  <div className="text-slate-400">{order.customer?.name}</div>
+                  <div className="font-mono text-indigo-400 mt-1">
+                    {order.lines?.length || 0} line item(s)
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleOpenCreateForOrder(order)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 shadow-md transition-all"
+                >
+                  Allocate →
+                </button>
+              </div>
+            ))}
           </div>
         </div>
-      </Modal>
+      )}
 
-      <Modal isOpen={overrideModalOpen} onClose={() => setOverrideModalOpen(false)} title="Override Stock Allocation">
-        <div className="space-y-4">
-          <Input label="Warehouse ID" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} placeholder="Enter warehouse ID" />
-          <Input label="Quantity" type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
-          <Input label="Override Reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason for override" />
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setOverrideModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleOverride} loading={submitting}>Confirm Override</Button>
+      {/* Filter Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl border border-slate-800 bg-slate-900/50 backdrop-blur-lg">
+        <div className="flex items-center gap-3">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-4 py-2 text-sm rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+          >
+            <option value="">All Fulfillment Statuses</option>
+            <option value="PENDING">Pending (Reserved)</option>
+            <option value="PARTIALLY_FULFILLED">Partially Fulfilled</option>
+            <option value="FULFILLED">Fulfilled / Shipped</option>
+          </select>
+        </div>
+
+        <button
+          onClick={loadData}
+          className="px-4 py-2 text-sm font-medium rounded-xl text-slate-300 bg-slate-800 hover:bg-slate-700 hover:text-white transition-all flex items-center justify-center gap-2"
+        >
+          <span>↻</span> Refresh
+        </button>
+      </div>
+
+      {/* Fulfillment Table */}
+      <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/80 shadow-2xl backdrop-blur-xl">
+        {loading ? (
+          <div className="py-20 text-center">
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent"></div>
+            <p className="mt-3 text-sm text-slate-400">Loading fulfillment orders...</p>
+          </div>
+        ) : fulfillments.length === 0 ? (
+          <div className="py-20 text-center">
+            <span className="text-4xl">🚚</span>
+            <p className="mt-3 text-base font-semibold text-slate-200">No fulfillment records found</p>
+            <p className="text-sm text-slate-500">Allocate an order from above to start shipping.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-slate-300">
+              <thead className="bg-slate-900/90 text-xs font-semibold uppercase tracking-wider text-slate-400 border-b border-slate-800">
+                <tr>
+                  <th className="px-6 py-4">Fulfillment / Order</th>
+                  <th className="px-6 py-4">Warehouse</th>
+                  <th className="px-6 py-4">Customer</th>
+                  <th className="px-6 py-4 text-center">Status</th>
+                  <th className="px-6 py-4">Tracking Number</th>
+                  <th className="px-6 py-4">Shipped At</th>
+                  <th className="px-6 py-4 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {fulfillments.map((f) => {
+                  const isShipped = f.status === 'FULFILLED' || !!f.shippedAt;
+
+                  return (
+                    <tr key={f.id} className="hover:bg-slate-900/50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="font-mono font-bold text-white">
+                          {f.fulfillmentNumber || `FO-${f.id.slice(0, 8)}`}
+                        </div>
+                        <div className="text-xs text-indigo-400 font-mono">
+                          {f.salesOrder?.orderNumber || 'SO-N/A'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                          🏢 {f.warehouse?.name} ({f.warehouse?.code})
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-medium text-white">{f.salesOrder?.customer?.name || 'Customer'}</div>
+                        <div className="text-xs text-slate-400">{f.salesOrder?.customer?.company}</div>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                            isShipped
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                              : f.status === 'PARTIALLY_FULFILLED'
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                              : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+                          }`}
+                        >
+                          {f.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {f.trackingNumber ? (
+                          <span className="font-mono text-xs font-bold text-cyan-400">{f.trackingNumber}</span>
+                        ) : (
+                          <span className="text-xs text-slate-500">Not Dispatched</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-xs text-slate-400">
+                        {f.shippedAt ? new Date(f.shippedAt).toLocaleString() : '—'}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        {!isShipped && (
+                          <button
+                            onClick={() => openShipModal(f.id)}
+                            className="px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 shadow-md shadow-emerald-600/30 transition-all"
+                          >
+                            🚀 Ship Order
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Create / Allocate Fulfillment Modal */}
+      {createModalOpen && selectedOrderObj && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl text-slate-200">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <div>
+                <span className="text-xs font-semibold uppercase text-cyan-400">Fulfillment Allocation</span>
+                <h2 className="text-xl font-black text-white">
+                  Order {selectedOrderObj.orderNumber}
+                </h2>
+              </div>
+              <button
+                onClick={() => setCreateModalOpen(false)}
+                className="text-slate-400 hover:text-white text-xl font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateFulfillment} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
+                  Select Dispatch Warehouse
+                </label>
+                <select
+                  value={selectedWarehouseId}
+                  onChange={(e) => setSelectedWarehouseId(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  required
+                >
+                  {warehouses.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name} ({w.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Line items allocation inputs */}
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-400 mb-2">
+                  Line Items Quantity to Fulfill
+                </label>
+                <div className="space-y-3">
+                  {selectedOrderObj.lines?.map((line: any) => {
+                    const remaining = line.quantity - (line.fulfilledQuantity || 0);
+                    const currentAlloc = lineAllocations[line.id] ?? remaining;
+
+                    return (
+                      <div
+                        key={line.id}
+                        className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-4 text-xs"
+                      >
+                        <div className="flex-1">
+                          <div className="font-bold text-white">{line.product?.name}</div>
+                          <div className="text-[11px] text-indigo-400 font-mono">{line.product?.sku}</div>
+                          <div className="text-[11px] text-slate-400 mt-1">
+                            Ordered: {line.quantity} | Remaining: {remaining}
+                          </div>
+                        </div>
+
+                        <div className="w-32">
+                          <label className="block text-[10px] text-slate-500 uppercase mb-1">Qty to Ship</label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={remaining}
+                            value={currentAlloc}
+                            onChange={(e) =>
+                              setLineAllocations({
+                                ...lineAllocations,
+                                [line.id]: Math.min(remaining, Math.max(0, parseInt(e.target.value) || 0)),
+                              })
+                            }
+                            className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono font-bold text-center focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setCreateModalOpen(false)}
+                  className="px-4 py-2 text-sm font-medium rounded-xl text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creating}
+                  className="px-5 py-2 text-sm font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 transition-all disabled:opacity-50"
+                >
+                  {creating ? 'Allocating...' : 'Confirm Allocation'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
-      </Modal>
+      )}
+
+      {/* Ship / Tracking Modal */}
+      {shipModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl text-slate-200">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <span>🚀</span> Dispatch Shipment
+              </h3>
+              <button
+                onClick={() => setShipModalOpen(false)}
+                className="text-slate-400 hover:text-white text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmShip} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
+                  Courier Tracking Number
+                </label>
+                <input
+                  type="text"
+                  value={trackingNumber}
+                  onChange={(e) => setTrackingNumber(e.target.value)}
+                  placeholder="e.g. FEDEX-98234201"
+                  className="w-full px-4 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShipModalOpen(false)}
+                  className="px-4 py-2 text-sm font-medium rounded-xl text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={shipping}
+                  className="px-5 py-2 text-sm font-bold rounded-xl text-white bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/30 transition-all disabled:opacity-50"
+                >
+                  {shipping ? 'Dispatching...' : 'Mark as Shipped'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -47,7 +47,7 @@ export async function createQuotation(data: {
   return apiPost<QuotationResponse>('/api/quotations', data);
 }
 
-export async function updateQuotation(id: string, data: Partial<Quotation>): Promise<QuotationResponse> {
+export async function updateQuotation(id: string, data: Partial<Quotation> | any): Promise<QuotationResponse> {
   return apiPut<QuotationResponse>(`/api/quotations/${id}`, data);
 }
 

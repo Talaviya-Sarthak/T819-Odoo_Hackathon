@@ -23,7 +23,7 @@ exports.getById = async (req, res, next) => {
 
 exports.create = async (req, res, next) => {
   try {
-    const result = await productsService.create(req.body);
+    const result = await productsService.create(req.body, req.user);
     sendSuccess(res, 201, 'Product created', { product: result });
   } catch (err) {
     next(err);
@@ -32,8 +32,26 @@ exports.create = async (req, res, next) => {
 
 exports.update = async (req, res, next) => {
   try {
-    const result = await productsService.update(req.params.id, req.body);
+    const result = await productsService.update(req.params.id, req.body, req.user);
     sendSuccess(res, 200, 'Product updated', { product: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.listCategories = async (req, res, next) => {
+  try {
+    const result = await productsService.listCategories();
+    sendSuccess(res, 200, 'Categories fetched', { categories: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.createCategory = async (req, res, next) => {
+  try {
+    const result = await productsService.createCategory(req.body, req.user);
+    sendSuccess(res, 201, 'Category created', { category: result });
   } catch (err) {
     next(err);
   }

@@ -45,8 +45,16 @@ exports.generateAndSendOtp = async (email) => {
     lastSent: Date.now()
   });
 
-  await emailService.sendVerificationOtp(email, null, otp);
-  logger.info(`OTP generated for ${email}`);
+  logger.info(`[AUTH] Verification OTP for ${email}: ${otp}`);
+
+  try {
+    await emailService.sendVerificationOtp(email, null, otp);
+  } catch (err) {
+    logger.warn(`Failed to send verification email to ${email}: ${err.message}. Use OTP from server console: ${otp}`);
+    if (process.env.NODE_ENV !== 'development' && process.env.EMAIL_PROVIDER !== 'skip') {
+      throw new AppError('Unable to send verification email. Please try again.', 500);
+    }
+  }
 };
 
 exports.verifyOtp = async (email, otp) => {
