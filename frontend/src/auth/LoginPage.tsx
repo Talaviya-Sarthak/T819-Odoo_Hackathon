@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Card,
@@ -72,6 +72,17 @@ export default function LoginPage({
   const navigate = useNavigate();
   const { login: authLogin } = useAuth();
 
+  useEffect(() => {
+    // Clear any credentials auto-injected by browser password managers on page load
+    setEmail("");
+    setPassword("");
+    const timer = setTimeout(() => {
+      setEmail("");
+      setPassword("");
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -136,7 +147,13 @@ export default function LoginPage({
         </CardDescription>
       </CardHeader>
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} autoComplete="off">
+        {/* Hidden decoy fields to absorb aggressive browser autofill bots */}
+        <div style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', height: 0, width: 0, overflow: 'hidden' }} tabIndex={-1} aria-hidden="true">
+          <input type="text" name="fake_username_autofill" tabIndex={-1} autoComplete="off" />
+          <input type="password" name="fake_password_autofill" tabIndex={-1} autoComplete="off" />
+        </div>
+
         <CardContent className="grid gap-4">
           {error && (
             <div className="rounded-lg border border-red-900/50 bg-red-950/40 p-2.5 text-xs text-red-400 text-center">
@@ -152,8 +169,13 @@ export default function LoginPage({
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
               <Input
                 id="email"
+                name="user_login_email"
                 type="email"
                 required
+                autoComplete="off"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                data-bwignore="true"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
@@ -170,8 +192,13 @@ export default function LoginPage({
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
               <Input
                 id="password"
+                name="user_login_password"
                 type={showPassword ? "text" : "password"}
                 required
+                autoComplete="new-password"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                data-bwignore="true"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
