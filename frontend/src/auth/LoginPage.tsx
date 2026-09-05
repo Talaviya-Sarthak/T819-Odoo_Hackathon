@@ -30,11 +30,26 @@ import { useAuth } from "../context/AuthContext";
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 const DEMO_ACCOUNTS = [
-  { email: "sales@dealflow.demo", role: "SALES_REP", label: "Sales Rep", color: "border-blue-800/60 bg-blue-950/30 text-blue-400 hover:bg-blue-900/40" },
-  { email: "manager@dealflow.demo", role: "MANAGER_ADMIN", label: "Manager / Admin", color: "border-purple-800/60 bg-purple-950/30 text-purple-400 hover:bg-purple-900/40" },
-  { email: "ops@dealflow.demo", role: "OPS_FINANCE", label: "Ops / Finance", color: "border-emerald-800/60 bg-emerald-950/30 text-emerald-400 hover:bg-emerald-900/40" },
-  { email: "customer@dealflow.demo", role: "CUSTOMER", label: "Customer", color: "border-orange-800/60 bg-orange-950/30 text-orange-400 hover:bg-orange-900/40" },
+  { email: "rep@dealflow360.com", role: "SALES_REP", label: "Sales Rep", color: "border-blue-800/60 bg-blue-950/30 text-blue-400 hover:bg-blue-900/40" },
+  { email: "manager@dealflow360.com", role: "SALES_MANAGER", label: "Sales Manager", color: "border-purple-800/60 bg-purple-950/30 text-purple-400 hover:bg-purple-900/40" },
+  { email: "finance@dealflow360.com", role: "FINANCE", label: "Finance", color: "border-amber-800/60 bg-amber-950/30 text-amber-400 hover:bg-amber-900/40" },
+  { email: "admin@dealflow360.com", role: "ADMIN", label: "Admin", color: "border-rose-800/60 bg-rose-950/30 text-rose-400 hover:bg-rose-900/40" },
+  { email: "ops@dealflow360.com", role: "OPERATIONS", label: "Operations", color: "border-emerald-800/60 bg-emerald-950/30 text-emerald-400 hover:bg-emerald-900/40" },
+  { email: "apex.buyer@dealflow360.com", role: "CUSTOMER", label: "Customer (Apex)", color: "border-orange-800/60 bg-orange-950/30 text-orange-400 hover:bg-orange-900/40" },
 ];
+
+function getRoleRedirect(role?: string, defaultRoute?: string): string {
+  if (defaultRoute && defaultRoute !== '/login') return defaultRoute;
+  switch (role) {
+    case 'CUSTOMER': return '/customer/dashboard';
+    case 'SALES_REP': return '/sales/dashboard';
+    case 'SALES_MANAGER': return '/management/dashboard';
+    case 'FINANCE': return '/management/approvals';
+    case 'ADMIN': return '/management/dashboard';
+    case 'OPERATIONS': return '/operations/dashboard';
+    default: return '/sales/dashboard';
+  }
+}
 
 interface LoginPageProps {
   onNavigateSignUp?: () => void;
@@ -65,7 +80,7 @@ export default function LoginPage({
     try {
       const data = await login({ email, password });
       authLogin(data.accessToken, data.refreshToken, data.user, data.portal, data.navigation, data.permissions);
-      const redirectPath = data.portal?.route || "/login";
+      const redirectPath = getRoleRedirect(data.user?.role, data.portal?.route);
       navigate(redirectPath, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
@@ -83,7 +98,7 @@ export default function LoginPage({
     try {
       const data = await login({ email: demoEmail, password: "demo1234" });
       authLogin(data.accessToken, data.refreshToken, data.user, data.portal, data.navigation, data.permissions);
-      const redirectPath = data.portal?.route || "/login";
+      const redirectPath = getRoleRedirect(data.user?.role, data.portal?.route);
       navigate(redirectPath, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Demo login failed");

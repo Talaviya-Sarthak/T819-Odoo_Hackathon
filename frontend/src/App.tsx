@@ -72,7 +72,7 @@ function App() {
             <Route
               path="/sales"
               element={
-                <RoleRoute allowedRoles={['SALES_REP']}>
+                <RoleRoute allowedRoles={['SALES_REP', 'SALES_MANAGER', 'ADMIN']}>
                   <AppShell portalName="Sales Portal" />
                 </RoleRoute>
               }
@@ -93,7 +93,7 @@ function App() {
             <Route
               path="/management"
               element={
-                <RoleRoute allowedRoles={['MANAGER_ADMIN']}>
+                <RoleRoute allowedRoles={['SALES_MANAGER', 'FINANCE', 'ADMIN', 'MANAGER_ADMIN']}>
                   <AppShell portalName="Management Portal" />
                 </RoleRoute>
               }
@@ -117,7 +117,7 @@ function App() {
             <Route
               path="/operations"
               element={
-                <RoleRoute allowedRoles={['OPS_FINANCE']}>
+                <RoleRoute allowedRoles={['OPERATIONS', 'FINANCE', 'ADMIN', 'OPS_FINANCE']}>
                   <AppShell portalName="Operations & Finance Portal" />
                 </RoleRoute>
               }

@@ -207,10 +207,12 @@ async function main() {
   const demoUsers = [
     { email: 'admin@dealflow360.com', name: 'Admin User', role: 'ADMIN' },
     { email: 'sales@dealflow360.com', name: 'Sarah Sales Rep', role: 'SALES_REP' },
+    { email: 'rep@dealflow360.com', name: 'Sales Rep', role: 'SALES_REP' },
     { email: 'manager@dealflow360.com', name: 'Mike Sales Manager', role: 'SALES_MANAGER' },
     { email: 'finance@dealflow360.com', name: 'Fiona Finance', role: 'FINANCE' },
     { email: 'ops@dealflow360.com', name: 'Oscar Operations', role: 'OPERATIONS' },
     { email: 'customer@dealflow360.com', name: 'Carl Customer', role: 'CUSTOMER' },
+    { email: 'apex.buyer@dealflow360.com', name: 'Apex Global Buyer', role: 'CUSTOMER' },
     // Also support demo domains used in earlier auth tests
     { email: 'sales@dealflow.demo', name: 'Sales Rep Demo', role: 'SALES_REP' },
     { email: 'manager@dealflow.demo', name: 'Manager Demo', role: 'SALES_MANAGER' },
@@ -220,6 +222,7 @@ async function main() {
   ];
 
   const userMap = {};
+  const userByEmail = {};
   for (const u of demoUsers) {
     const user = await prisma.user.upsert({
       where: { email: u.email },
@@ -239,13 +242,24 @@ async function main() {
       },
     });
     userMap[u.role] = user;
+    userByEmail[u.email] = user;
   }
 
-  const salesRepUser = userMap['SALES_REP'];
+  const salesRepUser = userByEmail['rep@dealflow360.com'] || userMap['SALES_REP'];
 
   // ─── 5. Customers (5 items) ───────────────────────────────────
   console.log('Creating demo customers...');
   const customerList = [
+    {
+      name: 'Apex Global',
+      company: 'Apex Global Enterprises',
+      email: 'apex.buyer@dealflow360.com',
+      phone: '+1-555-0199',
+      address: '100 Apex Boulevard, New York, NY',
+      tierId: gold.id,
+      salesRepId: salesRepUser.id,
+      currency: 'USD',
+    },
     {
       name: 'Acme Corp',
       company: 'Acme Corporation',
@@ -307,12 +321,19 @@ async function main() {
     }
   }
 
-  // Link customer demo users to Acme Corp customer record
+  // Link customer demo users
   const acme = await prisma.customer.findFirst({ where: { name: 'Acme Corp' } });
   if (acme) {
     await prisma.user.updateMany({
-      where: { role: 'CUSTOMER' },
+      where: { role: 'CUSTOMER', email: { not: 'apex.buyer@dealflow360.com' } },
       data: { customerId: acme.id },
+    });
+  }
+  const apex = await prisma.customer.findFirst({ where: { name: 'Apex Global' } });
+  if (apex) {
+    await prisma.user.updateMany({
+      where: { email: 'apex.buyer@dealflow360.com' },
+      data: { customerId: apex.id },
     });
   }
 

@@ -14,16 +14,22 @@ const roleTabs = [
 ];
 
 const roleBadgeVariant: Record<Role, 'info' | 'success' | 'warning' | 'danger' | 'neutral'> = {
+  ADMIN: 'danger',
   SALES_REP: 'info',
+  SALES_MANAGER: 'success',
+  FINANCE: 'warning',
+  OPERATIONS: 'info',
+  CUSTOMER: 'neutral',
   MANAGER_ADMIN: 'success',
   OPS_FINANCE: 'warning',
-  CUSTOMER: 'neutral',
 };
 
 const roleOptions = [
+  { value: 'ADMIN', label: 'Admin' },
   { value: 'SALES_REP', label: 'Sales Rep' },
-  { value: 'MANAGER_ADMIN', label: 'Manager Admin' },
-  { value: 'OPS_FINANCE', label: 'Ops/Finance' },
+  { value: 'SALES_MANAGER', label: 'Sales Manager' },
+  { value: 'FINANCE', label: 'Finance' },
+  { value: 'OPERATIONS', label: 'Operations' },
   { value: 'CUSTOMER', label: 'Customer' },
 ];
 

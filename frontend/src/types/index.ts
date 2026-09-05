@@ -1,8 +1,25 @@
-export type Role = 'SALES_REP' | 'MANAGER_ADMIN' | 'OPS_FINANCE' | 'CUSTOMER';
+export type Role = 'ADMIN' | 'SALES_REP' | 'SALES_MANAGER' | 'FINANCE' | 'OPERATIONS' | 'CUSTOMER' | 'MANAGER_ADMIN' | 'OPS_FINANCE';
 
 export type CustomerTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
 
-export type QuotationStatus = 'DRAFT' | 'SENT' | 'PENDING' | 'APPROVED' | 'ORDER_CONFIRMED' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED';
+export type QuotationStatus = 
+  | 'DRAFT'
+  | 'PENDING_APPROVAL'
+  | 'UNDER_REVIEW'
+  | 'APPROVED'
+  | 'NEGOTIATION'
+  | 'CUSTOMER_CONFIRMED'
+  | 'ORDER_CONFIRMED'
+  | 'FULFILLMENT'
+  | 'PARTIALLY_FULFILLED'
+  | 'FULFILLED'
+  | 'REJECTED'
+  | 'RETURNED'
+  | 'CANCELLED'
+  | 'SENT'
+  | 'PENDING'
+  | 'ACCEPTED'
+  | 'EXPIRED';
 
 export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'RETURNED';
 
