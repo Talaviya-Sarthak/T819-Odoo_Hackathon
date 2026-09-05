@@ -2,10 +2,10 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './routes/ProtectedRoute';
 import RoleRoute from './routes/RoleRoute';
-import Login from './auth/Login';
-import Register from './auth/Register';
+import LoginPage from './auth/LoginPage';
+import SignUpPage from './auth/SignUpPage';
 import VerifyOTP from './auth/VerifyOTP';
-import ForgotPassword from './auth/ForgotPassword';
+import ForgotPasswordPage from './auth/ForgotPasswordPage';
 import ResetPassword from './auth/ResetPassword';
 import Callback from './auth/Callback';
 import Unauthorized from './pages/Unauthorized';
@@ -21,10 +21,10 @@ function App() {
       <BrowserRouter>
         <Routes>
           {/* Public routes */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<SignUpPage />} />
           <Route path="/verify-email" element={<VerifyOTP />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/auth/callback" element={<Callback />} />
           <Route path="/unauthorized" element={<Unauthorized />} />
