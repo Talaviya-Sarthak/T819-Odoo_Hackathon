@@ -26,8 +26,6 @@ import {
 import AuthBackground from "./AuthBackground";
 import { login } from "../services/auth.api";
 import { useAuth } from "../context/AuthContext";
-import { getPortalPath } from "../config/roles";
-import type { Role } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -66,8 +64,8 @@ export default function LoginPage({
 
     try {
       const data = await login({ email, password });
-      authLogin(data.accessToken, data.refreshToken, data.user);
-      const redirectPath = getPortalPath(data.user.role as Role);
+      authLogin(data.accessToken, data.refreshToken, data.user, data.portal, data.navigation, data.permissions);
+      const redirectPath = data.portal?.route || "/login";
       navigate(redirectPath, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
@@ -84,8 +82,8 @@ export default function LoginPage({
 
     try {
       const data = await login({ email: demoEmail, password: "demo1234" });
-      authLogin(data.accessToken, data.refreshToken, data.user);
-      const redirectPath = getPortalPath(data.user.role as Role);
+      authLogin(data.accessToken, data.refreshToken, data.user, data.portal, data.navigation, data.permissions);
+      const redirectPath = data.portal?.route || "/login";
       navigate(redirectPath, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Demo login failed");

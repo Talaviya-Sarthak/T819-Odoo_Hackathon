@@ -1,10 +1,8 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getPortalPath } from '../config/roles';
-import type { Role } from '../types';
 
 export default function Dashboard() {
-  const { user, loading } = useAuth();
+  const { user, loading, portal } = useAuth();
 
   if (loading) {
     return (
@@ -18,5 +16,5 @@ export default function Dashboard() {
     return <Navigate to="/login" replace />;
   }
 
-  return <Navigate to={getPortalPath(user.role as Role)} replace />;
+  return <Navigate to={portal?.route || '/login'} replace />;
 }

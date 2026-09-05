@@ -1,6 +1,18 @@
 import { useAuth } from '../../context/AuthContext';
-import { ROLE_LABELS, ROLE_BADGE_COLORS } from '../../config/roles';
-import type { Role } from '../../types';
+
+const ROLE_BADGE_COLORS: Record<string, string> = {
+  SALES_REP: 'bg-blue-100 text-blue-800',
+  MANAGER_ADMIN: 'bg-purple-100 text-purple-800',
+  OPS_FINANCE: 'bg-green-100 text-green-800',
+  CUSTOMER: 'bg-orange-100 text-orange-800',
+};
+
+const ROLE_LABELS: Record<string, string> = {
+  SALES_REP: 'Sales Representative',
+  MANAGER_ADMIN: 'Manager / Admin',
+  OPS_FINANCE: 'Operations & Finance',
+  CUSTOMER: 'Customer',
+};
 
 interface HeaderProps {
   portalName: string;
@@ -21,7 +33,7 @@ export default function Header({ portalName }: HeaderProps) {
     logout();
   }
 
-  const role = user?.role as Role | undefined;
+  const role = user?.role;
 
   return (
     <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-6">
@@ -31,8 +43,8 @@ export default function Header({ portalName }: HeaderProps) {
 
       <div className="flex items-center gap-4">
         {role && (
-          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${ROLE_BADGE_COLORS[role]}`}>
-            {ROLE_LABELS[role]}
+          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${ROLE_BADGE_COLORS[role] || 'bg-gray-100 text-gray-800'}`}>
+            {ROLE_LABELS[role] || role}
           </span>
         )}
 

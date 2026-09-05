@@ -5,6 +5,18 @@ const router = express.Router();
 const authController = require('./auth.controller');
 const { authenticate } = require('../../middlewares/auth.middleware');
 const { validateRegister, validateLogin, validateVerifyOtp, validateForgotPassword, validateResetPassword } = require('./auth.validation');
+const rbacService = require('../../services/rbac.service');
+const { sendSuccess } = require('../../utils/response');
+
+// Public: get roles available for self-registration
+router.get('/roles', async (req, res, next) => {
+  try {
+    const roles = await rbacService.getPublicRoles();
+    sendSuccess(res, 200, 'Roles fetched', { roles });
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.post('/register', validateRegister, authController.register);
 router.post('/verify-email', validateVerifyOtp, authController.verifyEmail);

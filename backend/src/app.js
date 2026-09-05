@@ -10,7 +10,20 @@ const logger = require('./utils/logger');
 const { requestLogger } = require('./middlewares/request.middleware');
 const { errorHandler } = require('./middlewares/error.middleware');
 const authRoutes = require('./modules/auth/auth.routes');
+const productsRoutes = require('./modules/products/products.routes');
+const customersRoutes = require('./modules/customers/customers.routes');
+const quotationsRoutes = require('./modules/quotations/quotations.routes');
+const discountsRoutes = require('./modules/discounts/discounts.routes');
+const approvalsRoutes = require('./modules/approvals/approvals.routes');
+const fulfillmentRoutes = require('./modules/fulfillment/fulfillment.routes');
+const billingRoutes = require('./modules/billing/billing.routes');
+const negotiationsRoutes = require('./modules/negotiations/negotiations.routes');
+const recommendationsRoutes = require('./modules/recommendations/recommendations.routes');
+const dealHealthRoutes = require('./modules/deal-health/deal-health.routes');
+const reportsRoutes = require('./modules/reports/reports.routes');
 const { authenticate } = require('./middlewares/auth.middleware');
+const rbacService = require('./services/rbac.service');
+const { sendSuccess } = require('./utils/response');
 
 const app = express();
 
@@ -50,11 +63,38 @@ app.get('/api/protected', authenticate, (req, res) => {
   });
 });
 
+// Navigation API - returns authenticated user's authorized navigation
+app.get('/api/navigation', authenticate, async (req, res, next) => {
+  try {
+    const authContext = await rbacService.getUserAuthContext(req.user.id);
+    sendSuccess(res, 200, 'Navigation fetched', {
+      navigation: authContext.navigation,
+      portal: authContext.portal,
+      permissions: authContext.permissions,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Role-based portal routes
 app.use('/api/sales', require('./modules/sales/sales.routes'));
 app.use('/api/management', require('./modules/management/management.routes'));
 app.use('/api/operations', require('./modules/operations/operations.routes'));
 app.use('/api/customer', require('./modules/customer/customer.routes'));
+
+// Business domain routes
+app.use('/api/products', productsRoutes);
+app.use('/api/customers', customersRoutes);
+app.use('/api/quotations', quotationsRoutes);
+app.use('/api', discountsRoutes);
+app.use('/api/approvals', approvalsRoutes);
+app.use('/api', fulfillmentRoutes);
+app.use('/api', billingRoutes);
+app.use('/api', negotiationsRoutes);
+app.use('/api', recommendationsRoutes);
+app.use('/api', dealHealthRoutes);
+app.use('/api', reportsRoutes);
 
 app.use(errorHandler);
 

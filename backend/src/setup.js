@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Setup script: creates tables + seeds demo users.
+ * Setup script: creates tables + seeds demo users + RBAC data.
  * Run: node src/setup.js
  */
 
@@ -9,6 +9,8 @@ require('dotenv').config();
 const { connect, query, close } = require('./database/index');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
+const path = require('path');
 
 const SCHEMA = `
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -54,10 +56,17 @@ async function setup() {
   console.log('Connecting to database...');
   await connect();
 
-  // Create tables
-  console.log('Creating tables...');
+  // Create base tables
+  console.log('Creating base tables...');
   await query(SCHEMA);
-  console.log('  Tables created.');
+  console.log('  Base tables created.');
+
+  // Run RBAC migration
+  console.log('Running RBAC migration...');
+  const migrationPath = path.join(__dirname, '../migrations/002_rbac_tables.sql');
+  const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
+  await query(migrationSQL);
+  console.log('  RBAC tables created and seeded.');
 
   // Seed demo users
   const passwordHash = await bcrypt.hash('demo1234', 12);

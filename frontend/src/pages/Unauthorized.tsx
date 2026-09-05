@@ -1,11 +1,10 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getPortalPath } from '../config/roles';
 
 export default function Unauthorized() {
-  const { user } = useAuth();
+  const { user, portal } = useAuth();
 
-  const homePath = user?.role ? getPortalPath(user.role) : '/login';
+  const homePath = portal?.route || '/login';
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center p-5">

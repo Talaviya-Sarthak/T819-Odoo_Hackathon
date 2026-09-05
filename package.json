@@ -1,0 +1,23 @@
+{
+  "name": "dealflow360",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DealFlow360 - Enterprise B2B Deal Management Platform",
+  "scripts": {
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "db:generate": "cd prisma && npx prisma generate",
+    "db:push": "cd prisma && npx prisma db push",
+    "db:migrate": "cd prisma && npx prisma migrate dev",
+    "db:seed": "cd prisma && npx prisma db seed",
+    "db:studio": "cd prisma && npx prisma studio",
+    "setup": "npm run db:generate && npm run db:push && npm run db:seed"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  }
+}

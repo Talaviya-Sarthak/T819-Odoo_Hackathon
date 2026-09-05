@@ -31,11 +31,25 @@ const registerSchema = {
     if (!data.password || typeof data.password !== 'string' || data.password.length < 8) {
       errors.push({ message: 'Password must be at least 8 characters' });
     }
+    // roleId is optional - if provided, must be a valid UUID
+    if (data.roleId !== undefined && data.roleId !== null && data.roleId !== '') {
+      if (typeof data.roleId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.roleId)) {
+        errors.push({ message: 'Invalid role selected' });
+      }
+    }
 
     if (errors.length > 0) {
       return { success: false, error: { errors } };
     }
-    return { success: true, data: { name: data.name.trim(), email: data.email.toLowerCase().trim(), password: data.password } };
+    return {
+      success: true,
+      data: {
+        name: data.name.trim(),
+        email: data.email.toLowerCase().trim(),
+        password: data.password,
+        roleId: data.roleId || null,
+      }
+    };
   }
 };
 
