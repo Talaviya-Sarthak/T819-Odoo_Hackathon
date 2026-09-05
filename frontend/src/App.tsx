@@ -20,6 +20,7 @@ import SalesOrders from './pages/sales/Orders';
 import AIAdvisor from './pages/sales/AIAdvisor';
 import DiscountRequests from './pages/sales/DiscountRequests';
 import ApprovalStatus from './pages/sales/ApprovalStatus';
+import SalesNegotiation from './pages/sales/Negotiation';
 
 // Management Pages
 import ManagementDashboard from './pages/management/Dashboard';
@@ -90,6 +91,8 @@ function App() {
               <Route path="ai-advisor" element={<AIAdvisor />} />
               <Route path="discount-requests" element={<DiscountRequests />} />
               <Route path="approval-status" element={<ApprovalStatus />} />
+              <Route path="negotiation" element={<SalesNegotiation />} />
+              <Route path="negotiation/:quotationId" element={<SalesNegotiation />} />
               <Route index element={<Navigate to="dashboard" replace />} />
             </Route>
 

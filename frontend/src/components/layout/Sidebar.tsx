@@ -71,6 +71,7 @@ export default function Sidebar({
             heading: 'Pipeline & CRM',
             items: [
               { id: 'customers', title: 'Customers', path: '/sales/customers', icon: Users },
+              { id: 'negotiations', title: 'Negotiations & Chat', path: '/sales/negotiation', icon: MessageSquare },
               { id: 'orders', title: 'Sales Orders', path: '/sales/orders', icon: ShoppingBag },
               { id: 'approval-status', title: 'Approval Status', path: '/sales/approval-status', icon: CheckCircle2 },
             ]
@@ -92,6 +93,7 @@ export default function Sidebar({
             heading: 'Deals & Revenue',
             items: [
               { id: 'quotations', title: 'Quotation Kanban', path: '/sales/quotations', icon: FolderKanban },
+              { id: 'negotiations', title: 'Negotiations & Chat', path: '/sales/negotiation', icon: MessageSquare },
               { id: 'quote-builder', title: 'Quote Builder', path: '/sales/quote-builder', icon: Plus },
               { id: 'customers', title: 'Customer Accounts', path: '/sales/customers', icon: Users },
               { id: 'deal-health', title: 'Deal Health & Risk', path: '/management/deal-health', icon: Activity },

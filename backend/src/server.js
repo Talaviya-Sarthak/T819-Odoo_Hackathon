@@ -3,10 +3,12 @@
 require('tsx/cjs');
 require('dotenv').config(); // Load backend/.env with Supabase & Neon configurations
 
+const http = require('http');
 const app = require('./app');
 const config = require('./config/env');
 const logger = require('./utils/logger');
 const { connect } = require('./database/index');
+const { initWebSocket } = require('./websocket/socket');
 
 async function start() {
   try {
@@ -16,7 +18,10 @@ async function start() {
     const { syncCustomerAccounts } = require('./services/customer-sync.service');
     await syncCustomerAccounts();
 
-    const server = app.listen(config.PORT, () => {
+    const server = http.createServer(app);
+    initWebSocket(server);
+
+    server.listen(config.PORT, () => {
       logger.info(`Server running on port ${config.PORT}`);
       logger.info(`Environment: ${config.NODE_ENV}`);
     });

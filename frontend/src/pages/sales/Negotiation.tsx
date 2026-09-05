@@ -9,7 +9,6 @@ import {
   joinNegotiation, 
   leaveNegotiation, 
   sendChatMessage, 
-  sendCounterDiscountOffer, 
   emitTyping, 
   onConnectionStatusChange, 
   setActiveRoomQuotationId,
@@ -20,14 +19,15 @@ import {
   MessageSquare, 
   ArrowLeft, 
   RefreshCw, 
-  Percent, 
-  Sliders, 
-  CheckCircle2, 
+  ExternalLink,
+  User,
   Wifi, 
-  WifiOff 
+  WifiOff,
+  AlertTriangle,
+  Clock
 } from 'lucide-react';
 
-export default function Negotiation() {
+export default function SalesNegotiation() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const params = useParams<{ quotationId?: string }>();
@@ -38,22 +38,16 @@ export default function Negotiation() {
     params.quotationId || searchParams.get('quotation') || ''
   );
 
-  const [customerQuotations, setCustomerQuotations] = useState<Quotation[]>([]);
+  const [quotationsList, setQuotationsList] = useState<Quotation[]>([]);
   const [currentQuotation, setCurrentQuotation] = useState<Quotation | null>(null);
   const [thread, setThread] = useState<NegotiationThread | null>(null);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
-  const [confirming, setConfirming] = useState(false);
   const [messageInput, setMessageInput] = useState('');
 
   // WebSocket real-time states
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [typingIndicator, setTypingIndicator] = useState<{ isTyping: boolean; name: string } | null>(null);
-
-  // Counter-discount & change request form state
-  const [showCounterForm, setShowCounterForm] = useState(false);
-  const [counterDiscount, setCounterDiscount] = useState('');
-  const [counterNotes, setCounterNotes] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimerRef = useRef<any>(null);
@@ -66,7 +60,7 @@ export default function Negotiation() {
     }
   }, [params.quotationId]);
 
-  // 1. Subscribe to WebSocket connection status
+  // 1. Subscribe to connection status
   useEffect(() => {
     const unsubscribe = onConnectionStatusChange((status) => {
       setConnectionStatus(status);
@@ -74,16 +68,16 @@ export default function Negotiation() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Load customer quotations for switcher
+  // 2. Load quotations for dropdown switcher
   useEffect(() => {
     async function loadQuotes() {
       try {
         const quotes = await quotationsApi.getAll();
-        setCustomerQuotations(quotes || []);
+        setQuotationsList(quotes || []);
         if (!activeQuotationId && quotes && quotes.length > 0 && quotes[0]) {
           const defaultId = quotes[0].id;
           setActiveQuotationId(defaultId);
-          navigate(`/customer/negotiation/${defaultId}`, { replace: true });
+          navigate(`/sales/negotiation/${defaultId}`, { replace: true });
         }
       } catch (err) {
         console.error('Failed to load quotations:', err);
@@ -92,7 +86,7 @@ export default function Negotiation() {
     loadQuotes();
   }, []);
 
-  // 3. Load initial quotation details & negotiation thread
+  // 3. Load quotation details & messages
   const loadThread = useCallback(async (quoteId: string) => {
     if (!quoteId) return;
     setLoading(true);
@@ -126,7 +120,7 @@ export default function Negotiation() {
 
     const doJoin = () => {
       joinNegotiation(activeQuotationId).catch((err) => {
-        console.warn('Socket join_negotiation failed, relying on REST fallback:', err.message);
+        console.warn('Sales socket join_negotiation failed:', err.message);
       });
     };
 
@@ -152,13 +146,11 @@ export default function Negotiation() {
           };
         }
 
-        // Check if message already exists by id or clientMessageId
         const exists = prev.messages.some(
           (m) => m.id === newMsg.id || (newMsg.clientMessageId && (m as any).clientMessageId === newMsg.clientMessageId)
         );
 
         if (exists) {
-          // Replace optimistic placeholder with real confirmed message
           return {
             ...prev,
             messages: prev.messages.map((m) =>
@@ -175,17 +167,16 @@ export default function Negotiation() {
         };
       });
 
-      // Clear typing indicator when a message arrives
       setTypingIndicator(null);
     };
 
-    // Handler for typing notifications
+    // Handler for customer typing
     const handleUserTyping = (data: any) => {
       if (data.quotationId === activeQuotationId && data.userId !== user?.id) {
         if (data.isTyping) {
           setTypingIndicator({
             isTyping: true,
-            name: data.name || 'Sales Representative',
+            name: data.name || 'Customer',
           });
 
           if (incomingTypingTimerRef.current) {
@@ -200,14 +191,20 @@ export default function Negotiation() {
       }
     };
 
-    // Handler for quotation status changes (e.g. counter discount submitted)
+    // Handler for quotation status change
     const handleStatusChanged = (data: any) => {
       if (data.quotationId === activeQuotationId) {
         setCurrentQuotation((prev) => (prev ? { ...prev, status: data.status } : null));
+        // Refresh change requests in thread
+        negotiationsApi.getMessages(activeQuotationId).then(setThread).catch(() => {});
         if (data.notice) {
           toast.info(data.notice, 'Quotation Status Updated');
         }
       }
+    };
+
+    const handleReconnect = () => {
+      joinNegotiation(activeQuotationId).catch(() => {});
     };
 
     socket.on('new_message', handleNewMessage);
@@ -227,12 +224,12 @@ export default function Negotiation() {
     };
   }, [activeQuotationId, user?.id, toast]);
 
-  // Auto-scroll to bottom of chat on new messages or typing
+  // Auto-scroll to bottom of chat
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [thread?.messages, typingIndicator]);
 
-  // Handle typing debounce
+  // Handle typing indicator emission
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setMessageInput(e.target.value);
     if (!activeQuotationId) return;
@@ -247,7 +244,7 @@ export default function Negotiation() {
     }, 2000);
   };
 
-  // Send regular message with optimistic update and WebSocket primary + REST fallback
+  // Send message
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     const text = messageInput.trim();
@@ -258,19 +255,18 @@ export default function Negotiation() {
       id: clientMessageId,
       clientMessageId,
       negotiationId: thread?.id || 'temp',
-      senderId: user?.id || 'me',
+      senderId: user?.id || 'rep',
       message: text,
       createdAt: new Date().toISOString(),
       sender: {
-        id: user?.id || 'me',
-        name: user?.name || 'You',
+        id: user?.id || 'rep',
+        name: user?.name || 'Sales Representative',
         email: user?.email || '',
-        role: user?.role || 'CUSTOMER',
+        role: user?.role || 'SALES_REP',
       },
       pending: true,
     };
 
-    // 1. Optimistic append
     setThread((prev) => {
       if (!prev) return null;
       return {
@@ -285,14 +281,13 @@ export default function Negotiation() {
     setSending(true);
 
     try {
-      // 2. Try sending via WebSocket
       await sendChatMessage({
         quotationId: activeQuotationId,
         message: text,
         clientMessageId,
       });
-    } catch (wsErr: any) {
-      console.warn('WebSocket message send failed, using REST API fallback:', wsErr);
+    } catch (wsErr) {
+      console.warn('Sales WebSocket message send failed, using REST fallback:', wsErr);
       try {
         const saved = await negotiationsApi.sendMessage(activeQuotationId, text);
         setThread((prev) => {
@@ -305,8 +300,7 @@ export default function Negotiation() {
           };
         });
       } catch (restErr: any) {
-        toast.fail(restErr.message || 'Failed to send message.');
-        // Remove optimistic message on permanent failure
+        toast.fail(restErr.message || 'Failed to send message');
         setThread((prev) => {
           if (!prev) return null;
           return {
@@ -320,64 +314,9 @@ export default function Negotiation() {
     }
   };
 
-  // Submit counter-discount request
-  const handleSubmitCounterDiscount = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const discount = parseFloat(counterDiscount);
-    if (isNaN(discount) || discount <= 0 || !activeQuotationId) return;
-
-    setSending(true);
-    try {
-      let result: any;
-      try {
-        const wsRes = await sendCounterDiscountOffer({
-          quotationId: activeQuotationId,
-          requestedDiscountPercent: discount,
-          notes: counterNotes,
-        });
-        result = wsRes?.result;
-      } catch (wsErr) {
-        console.warn('WebSocket counter offer failed, falling back to REST:', wsErr);
-        result = await negotiationsApi.requestChange(activeQuotationId, {
-          requestedDiscountPercent: discount,
-          notes: counterNotes,
-        });
-      }
-
-      toast.success(
-        result?.message?.message || result?.notice || `Counter-discount of ${discount}% submitted for review.`,
-        'Counter-Offer Sent'
-      );
-      setCounterDiscount('');
-      setCounterNotes('');
-      setShowCounterForm(false);
-
-      const [updatedQuote, updatedThread] = await Promise.all([
-        quotationsApi.getById(activeQuotationId),
-        negotiationsApi.getMessages(activeQuotationId),
-      ]);
-      setCurrentQuotation(updatedQuote);
-      setThread(updatedThread);
-    } catch (err: any) {
-      toast.fail(err.message || 'Failed to submit counter-discount.');
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const handleConfirmQuote = async () => {
-    if (!activeQuotationId) return;
-    setConfirming(true);
-    try {
-      const updated = await quotationsApi.customerConfirm(activeQuotationId);
-      toast.success('Quotation confirmed! Order processing has commenced.', 'Quotation Accepted');
-      setCurrentQuotation(updated);
-    } catch (err: any) {
-      toast.fail(err.message || 'Failed to confirm quotation.', 'Confirmation Error');
-    } finally {
-      setConfirming(false);
-    }
-  };
+  const customerName = (currentQuotation as any)?.customer?.name || (currentQuotation as any)?.customer_name || 'Client';
+  const customerEmail = (currentQuotation as any)?.customer?.email || 'N/A';
+  const quoteNumber = (currentQuotation as any)?.quotationNumber || (currentQuotation as any)?.quotation_number || activeQuotationId.slice(0, 8);
 
   return (
     <div className="space-y-6 pb-12">
@@ -385,15 +324,14 @@ export default function Negotiation() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/customer/quotations')}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/50 bg-card text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
+            onClick={() => navigate('/sales/quotations')}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/50 bg-card text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors cursor-pointer"
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold tracking-tight text-foreground">Negotiation & Inquiry Hub</h1>
-              {/* Real-time Connection Badge */}
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">Customer Negotiation & Inquiry Hub</h1>
               <span
                 className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
                   connectionStatus === 'connected'
@@ -423,27 +361,27 @@ export default function Negotiation() {
               </span>
             </div>
             <p className="text-sm text-muted-foreground">
-              Direct real-time communication thread with your dedicated sales representative
+              Direct real-time negotiation channel with client for price adjustments and terms
             </p>
           </div>
         </div>
 
-        {/* Quotation Selector */}
-        {customerQuotations.length > 1 && (
+        {/* Quotation Switcher */}
+        {quotationsList.length > 0 && (
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-muted-foreground">Select Quote:</span>
+            <span className="text-xs font-semibold text-muted-foreground">Select Quotation:</span>
             <select
               value={activeQuotationId}
               onChange={(e) => {
                 const newId = e.target.value;
                 setActiveQuotationId(newId);
-                navigate(`/customer/negotiation/${newId}`);
+                navigate(`/sales/negotiation/${newId}`);
               }}
               className="rounded-lg border border-border/60 bg-card px-3 py-1.5 text-xs font-semibold text-foreground focus:border-primary focus:outline-none"
             >
-              {customerQuotations.map((q) => (
+              {quotationsList.map((q) => (
                 <option key={q.id} value={q.id} className="bg-card text-foreground">
-                  {(q as any).quotationNumber || (q as any).quotation_number || q.id.slice(0, 8)} (${Number((q as any).totalAmount || (q as any).grand_total || 0).toFixed(2)}) - {q.status}
+                  {(q as any).quotationNumber || (q as any).quotation_number || q.id.slice(0, 8)} - {(q as any).customer?.name || 'Customer'} ({q.status})
                 </option>
               ))}
             </select>
@@ -451,22 +389,20 @@ export default function Negotiation() {
         )}
       </div>
 
-      {/* Main Grid: Left Chat, Right Quotation & Counter-Offer Panel */}
+      {/* Main Grid: Chat Thread on Left, Quotation & Counter-Offers on Right */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Left: Chat Thread */}
+        {/* Chat Thread */}
         <div className="lg:col-span-2 flex flex-col rounded-xl border border-border/50 bg-card shadow-xs overflow-hidden h-[620px]">
           <div className="flex items-center justify-between border-b border-border/50 bg-muted/20 px-6 py-3.5">
             <div className="flex items-center gap-2">
               <MessageSquare className="h-4 w-4 text-primary" />
               <span className="text-sm font-bold text-foreground">
-                Discussion: {(currentQuotation as any)?.quotationNumber || activeQuotationId.slice(0, 8)}
+                Quotation: {quoteNumber} ({customerName})
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="rounded-full bg-muted border border-border/50 px-2.5 py-0.5 text-xs font-bold text-foreground">
-                {currentQuotation?.status || 'ACTIVE'}
-              </span>
-            </div>
+            <span className="rounded-full bg-muted border border-border/50 px-2.5 py-0.5 text-xs font-bold text-foreground">
+              {currentQuotation?.status || 'ACTIVE'}
+            </span>
           </div>
 
           {/* Messages Scroll Area */}
@@ -476,25 +412,25 @@ export default function Negotiation() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <RefreshCw className="h-5 w-5 animate-spin" />
                 </div>
-                <span className="text-xs text-muted-foreground font-medium">Loading negotiation messages...</span>
+                <span className="text-xs text-muted-foreground font-medium">Loading conversation...</span>
               </div>
             ) : !thread?.messages || thread.messages.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center text-center text-muted-foreground">
                 <MessageSquare className="h-10 w-10 text-muted-foreground/30 mb-2" />
-                <p className="text-sm font-medium text-foreground">No messages in this negotiation yet</p>
-                <p className="text-xs text-muted-foreground">Start the conversation below or request a counter-discount.</p>
+                <p className="text-sm font-medium text-foreground">No negotiation messages yet</p>
+                <p className="text-xs text-muted-foreground">The client has not posted any inquiry or counter-offer for this quotation.</p>
               </div>
             ) : (
               thread.messages.map((m) => {
-                const isCustomerSender = m.sender?.role === 'CUSTOMER' || m.senderId === user?.id;
-                const senderName = isCustomerSender ? 'You' : (m.sender?.name || 'Sales Representative');
+                const isSalesRep = m.sender?.role !== 'CUSTOMER' && (m.senderId === user?.id || m.sender?.role === 'SALES_REP' || m.sender?.role === 'ADMIN');
+                const senderName = isSalesRep ? 'You (Sales Rep)' : (m.sender?.name || customerName);
                 const isChangeRequest = m.message.includes('[CHANGE REQUEST]');
                 const isPending = (m as any).pending;
 
                 return (
                   <div
                     key={m.id}
-                    className={`flex flex-col ${isCustomerSender ? 'items-end' : 'items-start'}`}
+                    className={`flex flex-col ${isSalesRep ? 'items-end' : 'items-start'}`}
                   >
                     <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1 px-1">
                       <span className="font-semibold text-foreground/80">{senderName}</span>
@@ -509,7 +445,7 @@ export default function Negotiation() {
                       } ${
                         isChangeRequest
                           ? 'border border-amber-500/30 bg-amber-500/10 font-medium text-amber-300'
-                          : isCustomerSender
+                          : isSalesRep
                           ? 'bg-primary text-primary-foreground'
                           : 'border border-border/50 bg-muted/40 text-foreground'
                       }`}
@@ -536,13 +472,13 @@ export default function Negotiation() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Message Input Form */}
+          {/* Reply Input Form */}
           <form onSubmit={handleSendMessage} className="border-t border-border/50 bg-card p-3 flex gap-2">
             <input
               type="text"
               value={messageInput}
               onChange={handleInputChange}
-              placeholder="Type a real-time message or inquiry to sales representative..."
+              placeholder="Type your response to the client..."
               disabled={sending}
               className="flex-1 rounded-lg border border-border/60 bg-background px-3.5 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
             />
@@ -552,116 +488,101 @@ export default function Negotiation() {
               className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-xs hover:bg-primary/90 disabled:opacity-50 transition-colors cursor-pointer"
             >
               <Send className="h-4 w-4" />
-              Send
+              Reply
             </button>
           </form>
         </div>
 
-        {/* Right: Quotation Snapshot & Counter-Discount Form */}
+        {/* Right: Quotation Summary & Counter-Offer Queue */}
         <div className="space-y-5">
-          {/* Quotation Snapshot */}
+          {/* Quotation Info Box */}
           <div className="rounded-xl border border-border/50 bg-card p-5 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-border/50 pb-3">
-              <h3 className="text-sm font-bold text-foreground">Quotation Summary</h3>
-              <span className="text-xs font-semibold text-primary">
-                {(currentQuotation as any)?.quotationNumber || activeQuotationId.slice(0, 8)}
-              </span>
-            </div>
-
-            <div className="space-y-2 text-xs text-muted-foreground">
-              <div className="flex justify-between">
-                <span>Subtotal:</span>
-                <span className="font-semibold text-foreground">${Number((currentQuotation as any)?.subtotal || 0).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Applied Discount:</span>
-                <span className="font-semibold text-rose-400">-${Number((currentQuotation as any)?.discountAmount || (currentQuotation as any)?.discount_total || 0).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Estimated Tax:</span>
-                <span className="font-semibold text-foreground">+${Number((currentQuotation as any)?.taxAmount || (currentQuotation as any)?.tax_total || 0).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between border-t border-border/40 pt-2 text-sm font-bold">
-                <span>Total Amount:</span>
-                <span className="text-primary">${Number((currentQuotation as any)?.totalAmount || (currentQuotation as any)?.grand_total || 0).toFixed(2)}</span>
-              </div>
-            </div>
-
-            <div className="pt-2 space-y-2">
-              {(currentQuotation?.status === 'APPROVED' || currentQuotation?.status === 'NEGOTIATION') && (
-                <button
-                  type="button"
-                  onClick={handleConfirmQuote}
-                  disabled={confirming}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-500 disabled:opacity-50 transition-colors cursor-pointer"
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  {confirming ? 'Confirming...' : 'Accept & Confirm Quotation'}
-                </button>
-              )}
-
+              <h3 className="text-sm font-bold text-foreground">Deal Overview</h3>
               <button
-                onClick={() => setShowCounterForm(!showCounterForm)}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/10 px-4 py-2 text-xs font-bold text-purple-400 hover:bg-purple-500/20 transition-colors shadow-xs cursor-pointer"
+                onClick={() => navigate(`/sales/quote-builder/${activeQuotationId}`)}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline cursor-pointer"
               >
-                <Percent className="h-4 w-4" />
-                {showCounterForm ? 'Hide Counter-Discount Form' : 'Request Counter-Discount'}
+                Quote Builder <ExternalLink className="h-3 w-3" />
               </button>
+            </div>
+
+            <div className="space-y-2.5 text-xs text-muted-foreground">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5" /> Customer:
+                </span>
+                <span className="font-semibold text-foreground">{customerName}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Email:</span>
+                <span className="font-mono text-foreground">{customerEmail}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Stage:</span>
+                <span className="font-semibold text-primary">{currentQuotation?.status || 'N/A'}</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-border/40 pt-2 text-sm font-bold">
+                <span>Total Amount:</span>
+                <span className="text-foreground">
+                  ${Number((currentQuotation as any)?.totalAmount || (currentQuotation as any)?.grand_total || 0).toFixed(2)}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Counter-Discount Submission Box */}
-          {showCounterForm && (
-            <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 p-5 shadow-xs space-y-4">
-              <div className="flex items-center gap-2 text-purple-300 font-bold text-sm">
-                <Sliders className="h-4 w-4" />
-                <span>Submit Counter-Discount Offer</span>
+          {/* Change Requests / Counter-Offers History */}
+          <div className="rounded-xl border border-border/50 bg-card p-5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between border-b border-border/50 pb-2.5">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-purple-400" />
+                <h3 className="text-sm font-bold text-foreground">Change Requests</h3>
               </div>
-              <p className="text-xs text-purple-300/80 leading-relaxed">
-                Submit a target discount percentage. Your request will be evaluated under discount governance and submitted for manager approval.
-              </p>
-
-              <form onSubmit={handleSubmitCounterDiscount} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-purple-300 mb-1">
-                    Requested Discount (%)
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="50"
-                    step="0.5"
-                    required
-                    placeholder="e.g. 15"
-                    value={counterDiscount}
-                    onChange={(e) => setCounterDiscount(e.target.value)}
-                    className="w-full rounded-lg border border-border/60 bg-background p-2 text-sm text-foreground focus:border-primary focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-purple-300 mb-1">
-                    Justification / Commitment
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder="e.g. Requesting 15% discount for bulk deployment commitment..."
-                    value={counterNotes}
-                    onChange={(e) => setCounterNotes(e.target.value)}
-                    className="w-full rounded-lg border border-border/60 bg-background p-2 text-xs text-foreground focus:border-primary focus:outline-none"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={sending || !counterDiscount}
-                  className="w-full rounded-lg bg-primary p-2.5 text-xs font-bold text-primary-foreground shadow-xs hover:bg-primary/90 disabled:opacity-50 transition-colors cursor-pointer"
-                >
-                  {sending ? 'Submitting for Governance...' : 'Submit Counter-Offer'}
-                </button>
-              </form>
+              <span className="text-xs font-semibold text-muted-foreground">
+                {thread?.changeRequests?.length || 0} requested
+              </span>
             </div>
-          )}
+
+            {!thread?.changeRequests || thread.changeRequests.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-2 text-center">
+                No change requests or counter-discounts on record.
+              </p>
+            ) : (
+              <div className="space-y-2.5 max-h-60 overflow-y-auto">
+                {thread.changeRequests.map((cr: any) => (
+                  <div
+                    key={cr.id}
+                    className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-3 space-y-1.5 text-xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-purple-300 uppercase tracking-wide text-[11px]">
+                        {cr.changeType}
+                      </span>
+                      <span className="rounded bg-purple-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-purple-300">
+                        {cr.status}
+                      </span>
+                    </div>
+
+                    {cr.newValue?.requestedDiscountPercent !== undefined && (
+                      <p className="text-foreground font-medium">
+                        Target Discount: <span className="text-rose-400 font-bold">{cr.newValue.requestedDiscountPercent}%</span>
+                      </p>
+                    )}
+
+                    {cr.newValue?.notes && (
+                      <p className="text-muted-foreground italic text-[11px]">
+                        "{cr.newValue.notes}"
+                      </p>
+                    )}
+
+                    <div className="pt-1 flex items-center justify-between text-[10px] text-muted-foreground">
+                      <span>{new Date(cr.createdAt).toLocaleString()}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

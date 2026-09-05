@@ -13,7 +13,8 @@ import {
   RefreshCw, 
   Calendar, 
   ArrowRight,
-  TrendingUp
+  TrendingUp,
+  MessageSquare
 } from 'lucide-react';
 
 const KANBAN_COLUMNS: Array<{ id: string; label: string; accentColor: string }> = [
@@ -229,12 +230,25 @@ export default function Quotations() {
                             </span>
                           </div>
 
-                          {date && (
-                            <div className="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground">
-                              <Calendar className="h-3 w-3" />
-                              <span>{new Date(date).toLocaleDateString()}</span>
-                            </div>
-                          )}
+                          <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+                            {date ? (
+                              <div className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                <span>{new Date(date).toLocaleDateString()}</span>
+                              </div>
+                            ) : <div />}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/sales/negotiation/${q.id}`);
+                              }}
+                              className="inline-flex items-center gap-1 rounded px-2 py-0.5 font-semibold text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 transition-colors cursor-pointer"
+                              title="Live Negotiation Chat"
+                            >
+                              <MessageSquare className="h-3 w-3" />
+                              Chat
+                            </button>
+                          </div>
                         </div>
                       );
                     })
@@ -308,10 +322,18 @@ export default function Quotations() {
                       <td className="px-6 py-4 text-xs text-muted-foreground">
                         {date ? new Date(date).toLocaleDateString() : '-'}
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-6 py-4 text-right space-x-3">
+                        <button
+                          onClick={() => navigate(`/sales/negotiation/${q.id}`)}
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-purple-400 hover:text-purple-300 hover:underline cursor-pointer"
+                          title="Open Real-time Negotiation Chat"
+                        >
+                          <MessageSquare className="h-3.5 w-3.5" />
+                          Chat
+                        </button>
                         <button
                           onClick={() => navigate(`/sales/quote-builder/${q.id}`)}
-                          className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline cursor-pointer"
                         >
                           Edit / View <ArrowRight className="h-3.5 w-3.5" />
                         </button>

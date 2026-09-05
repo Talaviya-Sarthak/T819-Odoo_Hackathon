@@ -40,6 +40,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/sales/ai-advisor': 'AI Deal Advisor',
   '/sales/discount-requests': 'Discount Requests',
   '/sales/approval-status': 'Approval Status',
+  '/sales/negotiation': 'Negotiation Hub',
 
   '/management/dashboard': 'Management Overview',
   '/management/approvals': 'Pending Approvals Queue',

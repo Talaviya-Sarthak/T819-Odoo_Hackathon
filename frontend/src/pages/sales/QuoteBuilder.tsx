@@ -21,7 +21,8 @@ import {
   ArrowLeft, 
   RefreshCw,
   TrendingUp,
-  DollarSign
+  DollarSign,
+  MessageSquare
 } from 'lucide-react';
 
 interface BuilderLine {
@@ -387,6 +388,17 @@ export default function QuoteBuilder() {
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2.5">
+          {id && (
+            <button
+              onClick={() => navigate(`/sales/negotiation/${id}`)}
+              className="inline-flex items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3.5 py-2 text-sm font-semibold text-purple-400 hover:bg-purple-500/20 transition-colors cursor-pointer"
+              title="Open Real-time Negotiation Chat with Customer"
+            >
+              <MessageSquare className="h-4 w-4 text-purple-400" />
+              Live Chat
+            </button>
+          )}
+
           <button
             onClick={handleCheckDiscount}
             disabled={checkingGovernance || isLocked}

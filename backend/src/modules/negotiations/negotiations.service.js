@@ -5,7 +5,7 @@ const { AppError } = require('../../utils/errors');
 const { checkQuotationDiscounts } = require('../../services/discount-governance.service');
 
 exports.getMessages = async (quotationId) => {
-  let negotiation = await prisma.negotiation.findFirst({
+  let negotiations = await prisma.negotiation.findMany({
     where: { quotationId },
     include: {
       messages: {
@@ -15,7 +15,10 @@ exports.getMessages = async (quotationId) => {
         orderBy: { createdAt: 'desc' },
       },
     },
+    orderBy: { createdAt: 'asc' },
   });
+
+  let negotiation = negotiations[0];
 
   if (!negotiation) {
     const quotation = await prisma.quotation.findUnique({ where: { id: quotationId } });
@@ -31,6 +34,30 @@ exports.getMessages = async (quotationId) => {
         messages: true,
         changeRequests: true,
       },
+    });
+  } else if (negotiations.length > 1) {
+    // Consolidate duplicate negotiations into canonical one
+    const duplicateIds = negotiations.slice(1).map((n) => n.id);
+    await prisma.negotiationMessage.updateMany({
+      where: { negotiationId: { in: duplicateIds } },
+      data: { negotiationId: negotiation.id },
+    });
+    await prisma.changeRequest.updateMany({
+      where: { negotiationId: { in: duplicateIds } },
+      data: { negotiationId: negotiation.id },
+    });
+    await prisma.negotiation.deleteMany({
+      where: { id: { in: duplicateIds } },
+    });
+
+    // Re-fetch all consolidated messages and change requests
+    negotiation.messages = await prisma.negotiationMessage.findMany({
+      where: { negotiationId: negotiation.id },
+      orderBy: { createdAt: 'asc' },
+    });
+    negotiation.changeRequests = await prisma.changeRequest.findMany({
+      where: { negotiationId: negotiation.id },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
@@ -57,7 +84,10 @@ exports.sendMessage = async (quotationId, userId, { message, quotationLineId }) 
   const quotation = await prisma.quotation.findUnique({ where: { id: quotationId } });
   if (!quotation) throw new AppError('Quotation not found', 404);
 
-  let negotiation = await prisma.negotiation.findFirst({ where: { quotationId } });
+  let negotiation = await prisma.negotiation.findFirst({
+    where: { quotationId },
+    orderBy: { createdAt: 'asc' },
+  });
 
   if (!negotiation) {
     negotiation = await prisma.negotiation.create({
@@ -100,7 +130,10 @@ exports.requestChange = async (quotationId, userId, { quotationLineId, requested
   });
   if (!quotation) throw new AppError('Quotation not found', 404);
 
-  let negotiation = await prisma.negotiation.findFirst({ where: { quotationId } });
+  let negotiation = await prisma.negotiation.findFirst({
+    where: { quotationId },
+    orderBy: { createdAt: 'asc' },
+  });
 
   if (!negotiation) {
     negotiation = await prisma.negotiation.create({
