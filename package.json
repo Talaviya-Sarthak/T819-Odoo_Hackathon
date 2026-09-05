@@ -15,9 +15,13 @@
     "setup": "npm run db:generate && npm run db:push && npm run db:seed"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "prisma": "^6.4.1"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.4.1"
   }
 }

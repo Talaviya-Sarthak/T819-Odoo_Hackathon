@@ -81,9 +81,10 @@ export default function VerifyOTP() {
     try {
       const data = await verifyEmail({ email, otp });
       if (data.accessToken && data.refreshToken) {
-        authLogin(data.accessToken, data.refreshToken, data.user);
+        authLogin(data.accessToken, data.refreshToken, data.user, data.portal, data.navigation, data.permissions);
       }
-      navigate("/dashboard");
+      const redirectPath = data.portal?.route || "/login";
+      navigate(redirectPath, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Verification failed");
     } finally {
