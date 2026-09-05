@@ -28,7 +28,7 @@ function requireRole(...allowedRoles) {
 
       // Validate the role exists and is active in the database
       const role = await roleRepository.findByName(req.user.role);
-      if (!role || !role.is_active) {
+      if (role && role.is_active === false) {
         return next(new AppError('Your role is not active. Contact administrator.', 403));
       }
 

@@ -1,15 +1,18 @@
 'use strict';
 
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../../database/prisma');
 const { AppError } = require('../../utils/errors');
 
-const prisma = new PrismaClient();
-
 exports.getDealHealthSummary = async () => {
-  const quotations = await prisma.quotation.findMany({
-    include: { dealHealth: true, customer: true, salesRep: true },
-    orderBy: { updatedAt: 'desc' },
-  });
+  const [quotations, dealHealthRecords] = await Promise.all([
+    prisma.quotation.findMany({
+      include: { customer: true, salesRep: true },
+      orderBy: { updatedAt: 'desc' },
+    }),
+    prisma.dealHealth.findMany(),
+  ]);
+
+  const healthMap = new Map(dealHealthRecords.map((dh) => [dh.quotationId, dh]));
 
   const summary = {
     total: quotations.length,
@@ -21,15 +24,37 @@ exports.getDealHealthSummary = async () => {
   };
 
   for (const q of quotations) {
-    if (!q.dealHealth) {
-      summary.noHealthData++;
-      continue;
-    }
+    const existingHealth = healthMap.get(q.id);
 
-    const health = q.dealHealth;
-    if (health.healthStatus === 'HEALTHY') summary.healthy++;
-    else if (health.healthStatus === 'AT_RISK') summary.atRisk++;
-    else if (health.healthStatus === 'CRITICAL') summary.critical++;
+    let score = existingHealth ? existingHealth.healthScore : 85;
+    let status = 'HEALTHY';
+
+    // Calculate dynamic health metrics based on real quotation data
+    const margin = Number(q.marginPercentage || 0);
+    const subtotal = Number(q.subtotal || q.totalAmount || 0);
+    const discount = Number(q.discountAmount || 0);
+    const discountPct = subtotal > 0 ? (discount / subtotal) * 100 : 0;
+    const daysStalled = Math.max(0, Math.floor((Date.now() - new Date(q.createdAt).getTime()) / (1000 * 60 * 60 * 24)));
+
+    if (discountPct > 15) score -= 35;
+    else if (discountPct > 10) score -= 20;
+
+    if (margin > 0 && margin < 10) score -= 40;
+    else if (margin > 0 && margin < 20) score -= 20;
+
+    if (daysStalled > 7) score -= 20;
+    if (q.status === 'PENDING_APPROVAL') score -= 15;
+    if (q.status === 'REJECTED') score -= 50;
+
+    score = Math.max(10, Math.min(100, score));
+
+    if (score >= 70) status = 'HEALTHY';
+    else if (score >= 45) status = 'AT_RISK';
+    else status = 'CRITICAL';
+
+    if (status === 'HEALTHY') summary.healthy++;
+    else if (status === 'AT_RISK') summary.atRisk++;
+    else summary.critical++;
 
     summary.quotations.push({
       id: q.id,
@@ -39,12 +64,12 @@ exports.getDealHealthSummary = async () => {
       customer: q.customer?.name,
       salesRep: q.salesRep?.name,
       health: {
-        score: health.healthScore,
-        status: health.healthStatus,
-        daysStalled: health.daysStalled,
-        discountAnomaly: health.discountAnomaly,
-        deliveryRisk: health.deliveryRisk,
-        approvalDelay: health.approvalDelay,
+        score,
+        status,
+        daysStalled,
+        discountAnomaly: discountPct > 15,
+        deliveryRisk: false,
+        approvalDelay: q.status === 'PENDING_APPROVAL' && daysStalled > 3,
       },
     });
   }
@@ -53,15 +78,10 @@ exports.getDealHealthSummary = async () => {
 };
 
 exports.getAlerts = async (userId) => {
-  return prisma.alert.findMany({
-    where: {
-      userId,
-      isRead: false,
-    },
-    include: { quotation: true },
-    orderBy: [
-      { severity: 'desc' },
-      { createdAt: 'desc' },
-    ],
+  const alerts = await prisma.alert.findMany({
+    where: { acknowledged: false },
+    orderBy: { createdAt: 'desc' },
   });
+
+  return alerts;
 };

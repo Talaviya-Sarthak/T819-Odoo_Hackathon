@@ -13,7 +13,7 @@ const { sendSuccess } = require('../../utils/response');
 const { AppError } = require('../../utils/errors');
 
 router.use(authenticate);
-router.use(requireRole('MANAGER_ADMIN'));
+router.use(requireRole(['ADMIN', 'SALES_MANAGER', 'MANAGER_ADMIN']));
 
 // GET /api/management/roles - all active roles (for admin dropdown)
 router.get('/roles', async (req, res, next) => {

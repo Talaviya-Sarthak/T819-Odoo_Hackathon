@@ -663,3 +663,41 @@ export const knowledgeBaseApi = {
   },
 };
 
+// ─── Discount Rules API ─────────────────────────────────────────────────────
+export const discountRulesApi = {
+  getAll: async () => {
+    const res = await apiGet<any>('/api/discount-rules');
+    return res.rules || res.data || [];
+  },
+  create: async (data: any) => {
+    const res = await apiPost<any>('/api/discount-rules', data);
+    return res.rule || res.data;
+  },
+  update: async (id: string, data: any) => {
+    const res = await apiPut<any>(`/api/discount-rules/${id}`, data);
+    return res.rule || res.data;
+  },
+  delete: async (id: string) => {
+    return apiDelete<any>(`/api/discount-rules/${id}`);
+  },
+};
+
+// ─── Approval Rules API ─────────────────────────────────────────────────────
+export const approvalRulesApi = {
+  getAll: async () => {
+    const res = await apiGet<any>('/api/approval-rules');
+    return res.rules || res.data || [];
+  },
+  create: async (data: any) => {
+    const res = await apiPost<any>('/api/approval-rules', data);
+    return res.rule || res.data;
+  },
+  update: async (id: string, data: any) => {
+    const res = await apiPut<any>(`/api/approval-rules/${id}`, data);
+    return res.rule || res.data;
+  },
+  delete: async (id: string) => {
+    return apiDelete<any>(`/api/approval-rules/${id}`);
+  },
+};
+

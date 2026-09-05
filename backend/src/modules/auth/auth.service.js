@@ -9,6 +9,7 @@ const { AppError } = require('../../utils/errors');
 const logger = require('../../utils/logger');
 const otpService = require('./email/otp.service');
 const emailService = require('../../services/email/email.service');
+const { ensureCustomerForUser } = require('../../services/customer-sync.service');
 
 function sanitizeUser(user) {
   return {
@@ -22,7 +23,7 @@ function sanitizeUser(user) {
   };
 }
 
-exports.register = async ({ name, email, password, roleId }) => {
+exports.register = async ({ name, email, password, roleId, role, company }) => {
   const existing = await userRepository.findByEmail(email);
   if (existing) {
     throw new AppError('Email already registered', 409);
@@ -31,18 +32,26 @@ exports.register = async ({ name, email, password, roleId }) => {
   // Validate role from database - MUST be self-registerable
   let roleName = 'CUSTOMER';
   if (roleId) {
-    const role = await rbacService.validateSelfRegisterableRole(roleId);
-    roleName = role.name;
+    const foundRole = await rbacService.validateSelfRegisterableRole(roleId);
+    roleName = foundRole.name;
+  } else if (role && (role === 'CUSTOMER' || role === 'SALES_REP')) {
+    roleName = role;
   }
 
   const skipEmail = process.env.EMAIL_PROVIDER === 'skip';
   if (skipEmail) {
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await userRepository.create({ name, email, passwordHash, email_verified: true, role: roleName });
+    await ensureCustomerForUser(user);
 
     // Load full auth context from database
     const authContext = await rbacService.getUserAuthContext(user.id);
-    const accessToken = jwtService.generateAccessToken({ id: user.id, email: user.email, role: user.role });
+    const accessToken = jwtService.generateAccessToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      customerId: user.customerId || user.customer_id || null,
+    });
     const refreshToken = jwtService.generateRefreshToken({ id: user.id });
 
     return {
@@ -58,6 +67,11 @@ exports.register = async ({ name, email, password, roleId }) => {
 
   const passwordHash = await bcrypt.hash(password, 12);
   await otpService.storePendingRegistration(email, { name, email, passwordHash, role: roleName });
+
+  if (roleName === 'CUSTOMER') {
+    await ensureCustomerForUser({ name, email, role: roleName, company });
+  }
+
   await otpService.generateAndSendOtp(email);
 
   return { message: 'Registration successful. Please verify your email.' };
@@ -74,7 +88,12 @@ exports.verifyEmail = async ({ email, otp }) => {
     await userRepository.update(user.id, { email_verified: true });
 
     const authContext = await rbacService.getUserAuthContext(user.id);
-    const accessToken = jwtService.generateAccessToken({ id: user.id, email: user.email, role: user.role });
+    const accessToken = jwtService.generateAccessToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      customerId: user.customerId || user.customer_id || null,
+    });
     const refreshToken = jwtService.generateRefreshToken({ id: user.id });
 
     return {
@@ -100,10 +119,17 @@ exports.verifyEmail = async ({ email, otp }) => {
     role: roleName,
   });
 
+  await ensureCustomerForUser(user);
+
   otpService.clearPendingRegistration(email);
 
   const authContext = await rbacService.getUserAuthContext(user.id);
-  const accessToken = jwtService.generateAccessToken({ id: user.id, email: user.email, role: user.role });
+  const accessToken = jwtService.generateAccessToken({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    customerId: user.customerId || user.customer_id || null,
+  });
   const refreshToken = jwtService.generateRefreshToken({ id: user.id });
 
   return {
@@ -172,10 +198,19 @@ exports.login = async ({ email, password }) => {
     throw new AppError('Account is deactivated. Contact administrator.', 403);
   }
 
+  if (user.role === 'CUSTOMER') {
+    await ensureCustomerForUser(user);
+  }
+
   // Load full auth context from database (role, permissions, portal, navigation)
   const authContext = await rbacService.getUserAuthContext(user.id);
 
-  const accessToken = jwtService.generateAccessToken({ id: user.id, email: user.email, role: user.role });
+  const accessToken = jwtService.generateAccessToken({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    customerId: user.customerId || user.customer_id || null,
+  });
   const refreshToken = jwtService.generateRefreshToken({ id: user.id });
 
   return {
@@ -202,7 +237,12 @@ exports.refresh = async (refreshToken) => {
   // Load full auth context from database
   const authContext = await rbacService.getUserAuthContext(user.id);
 
-  const newAccessToken = jwtService.generateAccessToken({ id: user.id, email: user.email, role: user.role });
+  const newAccessToken = jwtService.generateAccessToken({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    customerId: user.customerId || user.customer_id || null,
+  });
   const newRefreshToken = jwtService.generateRefreshToken({ id: user.id });
 
   return {

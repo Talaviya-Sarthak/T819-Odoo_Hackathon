@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import DataTable from '../../components/DataTable';
 import Button from '../../components/Button';
 import Modal from '../../components/Modal';
 import Input from '../../components/Input';
 import Select from '../../components/Select';
 import { useToast } from '../../components/Toast';
+import { discountRulesApi } from '../../api';
 
 interface DiscountRule {
   id: string;
@@ -28,10 +29,27 @@ const emptyRule: Omit<DiscountRule, 'id'> = {
 export default function DiscountRules() {
   const { toast } = useToast();
   const [rules, setRules] = useState<DiscountRule[]>([]);
+  const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<DiscountRule | null>(null);
   const [form, setForm] = useState(emptyRule);
   const [saving, setSaving] = useState(false);
+
+  const loadRules = async () => {
+    setLoading(true);
+    try {
+      const data = await discountRulesApi.getAll();
+      setRules(Array.isArray(data) ? data : []);
+    } catch {
+      toast('Failed to load discount rules from database', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRules();
+  }, []);
 
   const openCreate = () => { setEditing(null); setForm(emptyRule); setModalOpen(true); };
   const openEdit = (r: DiscountRule) => { setEditing(r); setForm(r); setModalOpen(true); };
@@ -41,12 +59,13 @@ export default function DiscountRules() {
     setSaving(true);
     try {
       if (editing) {
-        setRules((prev) => prev.map((r) => (r.id === editing.id ? { ...r, ...form } : r)));
-        toast('Rule updated', 'success');
+        await discountRulesApi.update(editing.id, form);
+        toast('Rule updated in database', 'success');
       } else {
-        setRules((prev) => [...prev, { ...form, id: Date.now().toString() }]);
-        toast('Rule created', 'success');
+        await discountRulesApi.create(form);
+        toast('Rule created in database', 'success');
       }
+      await loadRules();
       setModalOpen(false);
     } catch {
       toast('Failed to save rule', 'error');

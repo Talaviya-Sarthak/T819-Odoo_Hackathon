@@ -1,6 +1,10 @@
 import type { LoginResponse, RegisterResponse, VerifyEmailResponse, User, RoleOption } from '../types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  (typeof window !== 'undefined' && window.location.hostname
+    ? `${window.location.protocol}//${window.location.hostname}:5000`
+    : 'http://localhost:5000');
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('accessToken');

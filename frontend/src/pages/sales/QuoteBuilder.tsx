@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   quotationsApi, 
@@ -45,6 +45,7 @@ export default function QuoteBuilder() {
   const [products, setProducts] = useState<Product[]>([]);
   
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
   const [lines, setLines] = useState<BuilderLine[]>([
     { productId: '', quantity: 1, unitPrice: 0, discountPercent: 0, taxRate: 0, billingType: 'ONE_TIME' },
   ]);
@@ -57,6 +58,20 @@ export default function QuoteBuilder() {
   const [governanceResult, setGovernanceResult] = useState<DiscountCheckResult | null>(null);
   const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
   const [addingRecId, setAddingRecId] = useState<string | null>(null);
+
+  const filteredCustomers = useMemo(() => {
+    let list = [...customers];
+    if (customerSearch.trim()) {
+      const q = customerSearch.toLowerCase();
+      list = list.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          c.email?.toLowerCase().includes(q) ||
+          c.company?.toLowerCase().includes(q)
+      );
+    }
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  }, [customers, customerSearch]);
 
   // 1. Initial Reference Data Loading
   useEffect(() => {
@@ -405,22 +420,60 @@ export default function QuoteBuilder() {
       <div className="rounded-xl border border-border/50 bg-card p-6 shadow-xs">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-              Select Customer
-            </label>
-            <select
-              value={selectedCustomerId}
-              onChange={(e) => setSelectedCustomerId(e.target.value)}
-              disabled={isLocked}
-              className="w-full rounded-lg border border-border/60 bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none disabled:opacity-50"
-            >
-              <option value="">-- Choose Customer --</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.company || c.email}) - {getTierLabel(c.tier)} Tier
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Select Customer ({customers.length})
+              </label>
+              <div className="flex items-center gap-2">
+                {customers.length > 5 && (
+                  <span className="text-[10px] text-muted-foreground">
+                    {filteredCustomers.length} matching
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const res = await customersApi.getAll();
+                      const list = Array.isArray(res) ? res : (res as any)?.customers || [];
+                      setCustomers(list);
+                      toast.success(`Refreshed ${list.length} customers`);
+                    } catch (e: any) {
+                      toast.fail('Failed to refresh customer list');
+                    }
+                  }}
+                  title="Refresh customer list"
+                  className="p-1 text-muted-foreground hover:text-primary transition-colors rounded hover:bg-muted/40"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              {customers.length > 8 && (
+                <input
+                  type="text"
+                  value={customerSearch}
+                  onChange={(e) => setCustomerSearch(e.target.value)}
+                  placeholder="Filter by name, email, or company..."
+                  disabled={isLocked}
+                  className="w-full rounded-md border border-border/40 bg-background/60 px-2.5 py-1 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none"
+                />
+              )}
+              <select
+                value={selectedCustomerId}
+                onChange={(e) => setSelectedCustomerId(e.target.value)}
+                disabled={isLocked}
+                className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none disabled:opacity-50"
+              >
+                <option value="">-- Choose Customer --</option>
+                {filteredCustomers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.company || c.email || 'Direct'}) - {getTierLabel(c.tier)} Tier
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div>

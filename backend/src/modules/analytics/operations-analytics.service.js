@@ -40,7 +40,7 @@ exports.getOperationsKPIs = async () => {
     }),
     prisma.invoice.count({ where: { status: 'PAID' } }),
     prisma.payment.aggregate({
-      where: { status: { in: ['PAID', 'COMPLETED'] } },
+      where: { status: { in: ['PAID', 'PARTIAL'] } },
       _sum: { amount: true },
     }),
     prisma.subscription.count({ where: { status: 'ACTIVE' } }),

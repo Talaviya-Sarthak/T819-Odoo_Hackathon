@@ -400,3 +400,4 @@ exports.cancel = async (id, user = null, reason = '') => {
 
 exports.createOrderFromQuotation = exports.createFromQuotation;
 exports.getOrderById = exports.getById;
+exports.listOrders = exports.list;

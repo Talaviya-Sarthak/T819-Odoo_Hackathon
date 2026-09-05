@@ -1,9 +1,7 @@
 'use strict';
 
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../../database/prisma');
 const { AppError } = require('../../utils/errors');
-
-const prisma = new PrismaClient();
 
 exports.salesReport = async ({ period }) => {
   const now = new Date();
@@ -70,7 +68,13 @@ exports.approvalReport = async () => {
 
   const recentRequests = await prisma.approvalRequest.findMany({
     take: 10,
-    include: { quotation: true, requestedBy: true },
+    include: {
+      quotation: {
+        include: { salesRep: true, customer: true },
+      },
+      approver: true,
+      history: true,
+    },
     orderBy: { createdAt: 'desc' },
   });
 
@@ -97,7 +101,13 @@ exports.fulfillmentReport = async () => {
 
   const recentOrders = await prisma.fulfillmentOrder.findMany({
     take: 10,
-    include: { quotation: true, warehouse: true },
+    include: {
+      salesOrder: {
+        include: { customer: true },
+      },
+      customer: true,
+      warehouse: true,
+    },
     orderBy: { createdAt: 'desc' },
   });
 
@@ -113,13 +123,9 @@ exports.billingReport = async () => {
     include: { payments: true, customer: true },
   });
 
-  const totalRevenue = invoices
-    .filter((i) => i.status === 'PAID')
-    .reduce((sum, i) => sum + Number(i.total), 0);
-
-  const outstanding = invoices
-    .filter((i) => i.status !== 'PAID' && i.status !== 'CANCELLED')
-    .reduce((sum, i) => sum + Number(i.total), 0);
+  const totalRevenue = invoices.reduce((sum, i) => sum + Number(i.amountPaid || 0), 0);
+  const outstanding = invoices.reduce((sum, i) => sum + Number(i.balanceDue || 0), 0);
+  const totalBilled = invoices.reduce((sum, i) => sum + Number(i.totalAmount || 0), 0);
 
   const byStatus = {};
   for (const i of invoices) {
@@ -130,6 +136,7 @@ exports.billingReport = async () => {
     totalInvoices: invoices.length,
     totalRevenue,
     outstanding,
+    totalBilled,
     byStatus,
   };
 };

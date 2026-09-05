@@ -28,7 +28,7 @@ router.get('/dashboard', async (req, res, next) => {
 
 router.get('/orders', async (req, res, next) => {
   try {
-    const orders = await ordersService.listOrders(req.query);
+    const orders = await ordersService.list({ ...req.query, user: req.user });
     sendSuccess(res, 200, 'Operations confirmed orders', { orders });
   } catch (err) {
     next(err);

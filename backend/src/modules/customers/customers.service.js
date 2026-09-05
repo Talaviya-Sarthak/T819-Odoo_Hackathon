@@ -1,6 +1,5 @@
 'use strict';
 
-const { PrismaClient } = require('@prisma/client');
 const { AppError } = require('../../utils/errors');
 const { logAudit } = require('../../services/audit.service');
 const { generateKey, cache } = require('../../cache');
@@ -8,30 +7,38 @@ const prisma = require('../../database/prisma');
 
 const CUSTOMERS_LIST_TTL = 60; // 1 minute
 
-exports.list = async ({ user, tierId, search, limit = 50, offset = 0 } = {}) => {
+exports.list = async ({ user, tierId, search, myCustomers, limit = 500, offset = 0 } = {}) => {
   const where = {};
   if (tierId) where.tierId = tierId;
-  if (search) {
+
+  // Role-based customer visibility
+  if (user && user.role === 'CUSTOMER') {
+    const custId = user.customerId || user.customer_id;
     where.OR = [
-      { name: { contains: search, mode: 'insensitive' } },
-      { email: { contains: search, mode: 'insensitive' } },
-      { company: { contains: search, mode: 'insensitive' } },
+      ...(custId ? [{ id: custId }] : []),
+      ...(user.email ? [{ email: { equals: user.email, mode: 'insensitive' } }] : []),
+      { ownerId: user.id },
+    ];
+  } else if (user && user.role === 'SALES_REP' && (myCustomers === 'true' || myCustomers === true)) {
+    where.OR = [
+      { salesRepId: user.id },
+      { salesRepId: null },
+      { ownerId: user.id },
     ];
   }
 
-  // If customer role, only return their own customer profile
-  if (user && user.role === 'CUSTOMER') {
-    const custId = user.customerId || user.customer_id;
-    if (custId) {
-      where.id = custId;
+  if (search) {
+    const searchFilter = [
+      { name: { contains: search, mode: 'insensitive' } },
+      { company: { contains: search, mode: 'insensitive' } },
+      { email: { contains: search, mode: 'insensitive' } },
+    ];
+    if (where.OR) {
+      where.AND = [{ OR: where.OR }, { OR: searchFilter }];
+      delete where.OR;
     } else {
-      where.OR = [{ email: user.email }, { ownerId: user.id }];
+      where.OR = searchFilter;
     }
-  }
-
-  // If sales rep role, only show assigned customers
-  if (user && user.role === 'SALES_REP') {
-    where.OR = [{ salesRepId: user.id }, { ownerId: user.id }];
   }
 
   const cacheKey = generateKey(
@@ -40,6 +47,7 @@ exports.list = async ({ user, tierId, search, limit = 50, offset = 0 } = {}) => 
     user?.role,
     tierId,
     search,
+    myCustomers,
     limit,
     offset
   );
@@ -57,11 +65,11 @@ exports.list = async ({ user, tierId, search, limit = 50, offset = 0 } = {}) => 
       salesRep: { select: { id: true, name: true, email: true } },
     },
     orderBy: { createdAt: 'desc' },
-    take: Number(limit) || 50,
+    take: Number(limit) || 500,
     skip: Number(offset) || 0,
   });
 
-  // Store in cache with 1-minute TTL (customers change, but list is read frequently)
+  // Store in cache with 1-minute TTL
   cache.set(cacheKey, result, CUSTOMERS_LIST_TTL);
 
   return result;
@@ -77,10 +85,10 @@ exports.getById = async (id, user = null) => {
   });
   if (!customer) throw new AppError('Customer not found', 404);
 
-  // Authorization check for customer
+  // Authorization checks
   if (user && user.role === 'CUSTOMER') {
     const custId = user.customerId || user.customer_id;
-    const isOwnCustomer = (custId && customer.id === custId) ||
+    const isOwnCustomer = customer.id === custId || 
       (customer.email && customer.email.toLowerCase() === user.email.toLowerCase()) ||
       customer.ownerId === user.id;
     if (!isOwnCustomer) throw new AppError('Access denied', 403);
@@ -98,6 +106,20 @@ exports.create = async (data, user = null) => {
     salesRepId = user.id;
   }
 
+  let tierId = data.tierId;
+  if (!tierId && data.tier) {
+    const foundTier = await prisma.customerTier.findFirst({
+      where: { name: { equals: String(data.tier), mode: 'insensitive' } },
+    });
+    if (foundTier) tierId = foundTier.id;
+  }
+  if (!tierId) {
+    const defaultTier = await prisma.customerTier.findFirst({
+      orderBy: { discountPct: 'asc' },
+    });
+    tierId = defaultTier?.id || null;
+  }
+
   const customer = await prisma.customer.create({
     data: {
       name: data.name,
@@ -106,7 +128,7 @@ exports.create = async (data, user = null) => {
       phone: data.phone || null,
       address: data.address || null,
       currency: data.currency || 'USD',
-      tierId: data.tierId || null,
+      tierId: tierId || null,
       salesRepId: salesRepId || null,
       ownerId: user ? user.id : null,
     },
@@ -118,7 +140,7 @@ exports.create = async (data, user = null) => {
 
   // Invalidate customers list cache
   try {
-    cache.delete('customers:list');
+    cache.clear();
   } catch (e) {
     // Cache deletion failure should not break the operation
   }
@@ -141,7 +163,7 @@ exports.update = async (id, data, user = null) => {
   // Authorization checks
   if (user && user.role === 'CUSTOMER') {
     const custId = user.customerId || user.customer_id;
-    const isOwnCustomer = (custId && existing.id === custId) || 
+    const isOwnCustomer = existing.id === custId || 
       (existing.email && existing.email.toLowerCase() === user.email.toLowerCase()) ||
       existing.ownerId === user.id;
     if (!isOwnCustomer) throw new AppError('Access denied', 403);
@@ -152,11 +174,6 @@ exports.update = async (id, data, user = null) => {
     delete data.ownerId;
   }
 
-  if (user && user.role === 'SALES_REP') {
-    const isAssigned = existing.salesRepId === user.id || existing.ownerId === user.id;
-    if (!isAssigned) throw new AppError('Access denied. Customer not assigned to you.', 403);
-  }
-
   const updateData = {};
   if (data.name !== undefined) updateData.name = data.name;
   if (data.company !== undefined) updateData.company = data.company;
@@ -165,6 +182,12 @@ exports.update = async (id, data, user = null) => {
   if (data.address !== undefined) updateData.address = data.address;
   if (data.currency !== undefined) updateData.currency = data.currency;
   if (data.tierId !== undefined) updateData.tierId = data.tierId;
+  else if (data.tier) {
+    const foundTier = await prisma.customerTier.findFirst({
+      where: { name: { equals: String(data.tier), mode: 'insensitive' } },
+    });
+    if (foundTier) updateData.tierId = foundTier.id;
+  }
   if (data.salesRepId !== undefined) updateData.salesRepId = data.salesRepId;
 
   const updated = await prisma.customer.update({
@@ -178,7 +201,7 @@ exports.update = async (id, data, user = null) => {
 
   // Invalidate customers list cache
   try {
-    cache.delete('customers:list');
+    cache.clear();
   } catch (e) {
     // Cache deletion failure should not break the operation
   }

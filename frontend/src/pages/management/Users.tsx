@@ -3,6 +3,7 @@ import DataTable from '../../components/DataTable';
 import Tabs from '../../components/Tabs';
 import { Button } from '@/components/ui/button';
 import { useToast } from '../../components/Toast';
+import { apiGet, apiPut } from '../../services/api';
 import type { User, Role } from '../../types';
 import { 
   ShieldCheck, 
@@ -40,19 +41,31 @@ const roleOptions: { value: Role; label: string }[] = [
   { value: 'ADMIN', label: 'Administrator' },
 ];
 
-const initialUsers: User[] = [
-  { id: 'usr-1', email: 'harshit@enterprise.com', name: 'Harshit Pambhar', role: 'SALES_MANAGER', status: 'active', email_verified: true, created_at: new Date(Date.now() - 60*86400000).toISOString() },
-  { id: 'usr-2', email: 'sarah.chen@enterprise.com', name: 'Sarah Chen', role: 'SALES_REP', status: 'active', email_verified: true, created_at: new Date(Date.now() - 45*86400000).toISOString() },
-  { id: 'usr-3', email: 'marcus.vance@enterprise.com', name: 'Marcus Vance', role: 'FINANCE', status: 'active', email_verified: true, created_at: new Date(Date.now() - 30*86400000).toISOString() },
-  { id: 'usr-4', email: 'elena.rostova@enterprise.com', name: 'Elena Rostova', role: 'SALES_REP', status: 'active', email_verified: true, created_at: new Date(Date.now() - 20*86400000).toISOString() },
-  { id: 'usr-5', email: 'admin@enterprise.com', name: 'System Admin', role: 'ADMIN', status: 'active', email_verified: true, created_at: new Date(Date.now() - 90*86400000).toISOString() },
-];
 
 export default function Users() {
   const { toast } = useToast();
-  const [users, setUsers] = useState<User[]>(initialUsers);
-  const [loading, setLoading] = useState(false);
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
   const [roleFilter, setRoleFilter] = useState('all');
+
+  const fetchUsers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiGet<any>('/api/management/users?limit=100');
+      const list = res.users || res.data?.users || res.data || [];
+      if (Array.isArray(list) && list.length > 0) {
+        setUsers(list);
+      }
+    } catch {
+      toast.error('Failed to load users from database');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
 
   const filtered = useMemo(() => {
     return roleFilter === 'all' ? users : users.filter((u) => u.role === roleFilter);

@@ -134,6 +134,16 @@ export default function CustomerQuotations() {
                         {date ? new Date(date).toLocaleDateString() : '—'}
                       </td>
                       <td className="px-6 py-4 text-right space-x-2">
+                        {(q.status === 'APPROVED' || q.status === 'NEGOTIATION') && (
+                          <button
+                            onClick={() => handleConfirmQuote(q.id)}
+                            disabled={confirming}
+                            className="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-400 hover:bg-emerald-500/25 transition-colors shadow-xs"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            {confirming ? '...' : 'Confirm'}
+                          </button>
+                        )}
                         <button
                           onClick={() => setSelectedQuote(q)}
                           className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-muted/30 px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted/60 transition-colors"
@@ -267,7 +277,7 @@ export default function CustomerQuotations() {
                   Close
                 </button>
 
-                {selectedQuote.status === 'APPROVED' && (
+                {(selectedQuote.status === 'APPROVED' || selectedQuote.status === 'NEGOTIATION') && (
                   <button
                     onClick={() => handleConfirmQuote(selectedQuote.id)}
                     disabled={confirming}

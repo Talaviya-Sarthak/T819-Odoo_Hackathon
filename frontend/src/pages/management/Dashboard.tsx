@@ -120,12 +120,12 @@ export default function ManagementDashboard() {
         pendingApprovals: pendingList.length,
         activeDeals: quotesList.length,
         pipelineVolume: totalVol,
-        healthyDeals: healthy || 1,
+        healthyDeals: healthy,
         warningDeals: warning,
         criticalDeals: critical,
       });
 
-      // Prepare list records
+      // Prepare list records from authoritative live database
       if (pendingList.length > 0) {
         setDeals(
           pendingList.map((item: any) => {
@@ -146,17 +146,36 @@ export default function ManagementDashboard() {
               risk: (item.riskLevel || 'MEDIUM') as any,
               amount: `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
               submittedBy: { name: repName },
-              status: item.requiredRole || 'PENDING_APPROVAL',
+              status: item.requiredRole ? `Pending: ${item.requiredRole}` : 'PENDING_APPROVAL',
             };
           })
         );
       } else {
-        // Fallback to sample live presentation records
-        setDeals([
-          { id: '1', quote: 'QUO-20260905-0012', client: 'Apex Global Logistics', discount: '24.5%', risk: 'HIGH', amount: '$42,500.00', submittedBy: { name: 'Sarah Chen' }, status: 'Step 2 of 2: FINANCE' },
-          { id: '2', quote: 'QUO-20260905-0015', client: 'Nexus Tech Systems', discount: '18.0%', risk: 'MEDIUM', amount: '$18,900.00', submittedBy: { name: 'Michael Scott' }, status: 'Step 1 of 2: SALES_MGR' },
-          { id: '3', quote: 'QUO-20260905-0018', client: 'Horizon Manufacturing', discount: '12.0%', risk: 'LOW', amount: '$63,200.00', submittedBy: { name: 'Alex Rivera' }, status: 'Pre-Approved' },
-        ]);
+        // Display actual database quotations
+        setDeals(
+          quotesList.slice(0, 10).map((q: any) => {
+            const qNum = q.quotationNumber || q.quotation_number || `QT-${q.id?.slice(0, 6)}`;
+            const client = q.customer?.name || q.customer?.company || q.customer_name || 'Client';
+            const repName = q.salesRep?.name || q.salesRep?.email || 'Sales Rep';
+            const amount = Number(q.totalAmount || q.grand_total || 0);
+            const discAmt = Number(q.discountAmount || q.discount_total || 0);
+            const sub = Number(q.subtotal || amount || 1);
+            const discPct = sub > 0 ? (discAmt / sub) * 100 : 0;
+            const margin = Number(q.marginPercentage || 25);
+            const risk = discPct > 15 || margin < 12 ? 'CRITICAL' : (discPct > 10 || margin < 20 ? 'HIGH' : 'LOW');
+
+            return {
+              id: q.id,
+              quote: qNum,
+              client,
+              discount: `${discPct.toFixed(1)}%`,
+              risk: risk as any,
+              amount: `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+              submittedBy: { name: repName },
+              status: q.status.replace('_', ' '),
+            };
+          })
+        );
       }
     } catch (err) {
       console.error('Failed to load management dashboard data:', err);

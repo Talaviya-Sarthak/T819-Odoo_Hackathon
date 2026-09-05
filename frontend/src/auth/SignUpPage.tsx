@@ -29,7 +29,11 @@ import AuthBackground from "./AuthBackground";
 import { register, getPublicRoles } from "../services/auth.api";
 import type { RoleOption } from "../types";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  (typeof window !== "undefined" && window.location.hostname
+    ? `${window.location.protocol}//${window.location.hostname}:5000`
+    : "http://localhost:5000");
 
 const DEFAULT_ROLES: RoleOption[] = [
   { id: "CUSTOMER", name: "CUSTOMER", displayName: "Customer", display_name: "Customer", description: "Request quotes and track orders" },

@@ -13,6 +13,9 @@ async function start() {
     await connect();
     logger.info('Database connected');
 
+    const { syncCustomerAccounts } = require('./services/customer-sync.service');
+    await syncCustomerAccounts();
+
     const server = app.listen(config.PORT, () => {
       logger.info(`Server running on port ${config.PORT}`);
       logger.info(`Environment: ${config.NODE_ENV}`);

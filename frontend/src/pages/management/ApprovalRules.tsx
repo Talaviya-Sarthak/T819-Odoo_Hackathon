@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import DataTable from '../../components/DataTable';
 import Button from '../../components/Button';
 import Modal from '../../components/Modal';
 import Input from '../../components/Input';
 import { useToast } from '../../components/Toast';
+import { approvalRulesApi } from '../../api';
 
 interface ApprovalRule {
   id: string;
@@ -27,10 +28,27 @@ const emptyRule: Omit<ApprovalRule, 'id'> = {
 export default function ApprovalRules() {
   const { toast } = useToast();
   const [rules, setRules] = useState<ApprovalRule[]>([]);
+  const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ApprovalRule | null>(null);
   const [form, setForm] = useState(emptyRule);
   const [saving, setSaving] = useState(false);
+
+  const loadRules = async () => {
+    setLoading(true);
+    try {
+      const data = await approvalRulesApi.getAll();
+      setRules(Array.isArray(data) ? data : []);
+    } catch {
+      toast('Failed to load approval rules from database', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRules();
+  }, []);
 
   const openCreate = () => { setEditing(null); setForm(emptyRule); setModalOpen(true); };
   const openEdit = (r: ApprovalRule) => { setEditing(r); setForm(r); setModalOpen(true); };
@@ -40,12 +58,13 @@ export default function ApprovalRules() {
     setSaving(true);
     try {
       if (editing) {
-        setRules((prev) => prev.map((r) => (r.id === editing.id ? { ...r, ...form } : r)));
-        toast('Rule updated', 'success');
+        await approvalRulesApi.update(editing.id, form);
+        toast('Rule updated in database', 'success');
       } else {
-        setRules((prev) => [...prev, { ...form, id: Date.now().toString() }]);
-        toast('Rule created', 'success');
+        await approvalRulesApi.create(form);
+        toast('Rule created in database', 'success');
       }
+      await loadRules();
       setModalOpen(false);
     } catch {
       toast('Failed to save rule', 'error');

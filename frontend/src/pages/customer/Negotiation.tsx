@@ -11,7 +11,8 @@ import {
   RefreshCw,
   Percent,
   Sliders,
-  Sparkles
+  Sparkles,
+  CheckCircle2
 } from 'lucide-react';
 
 export default function Negotiation() {
@@ -30,6 +31,7 @@ export default function Negotiation() {
   const [thread, setThread] = useState<NegotiationThread | null>(null);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [messageInput, setMessageInput] = useState('');
 
   // Counter-discount & change request form state
@@ -131,6 +133,20 @@ export default function Negotiation() {
       toast.fail(err.message || 'Failed to submit counter-discount.');
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleConfirmQuote = async () => {
+    if (!activeQuotationId) return;
+    setConfirming(true);
+    try {
+      const updated = await quotationsApi.customerConfirm(activeQuotationId);
+      toast.success('Quotation confirmed! Order processing has commenced.', 'Quotation Accepted');
+      setCurrentQuotation(updated);
+    } catch (err: any) {
+      toast.fail(err.message || 'Failed to confirm quotation.', 'Confirmation Error');
+    } finally {
+      setConfirming(false);
     }
   };
 
@@ -289,7 +305,19 @@ export default function Negotiation() {
               </div>
             </div>
 
-            <div className="pt-2">
+            <div className="pt-2 space-y-2">
+              {(currentQuotation?.status === 'APPROVED' || currentQuotation?.status === 'NEGOTIATION') && (
+                <button
+                  type="button"
+                  onClick={handleConfirmQuote}
+                  disabled={confirming}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-500 disabled:opacity-50 transition-colors"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  {confirming ? 'Confirming...' : 'Accept & Confirm Quotation'}
+                </button>
+              )}
+
               <button
                 onClick={() => setShowCounterForm(!showCounterForm)}
                 className="flex w-full items-center justify-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/10 px-4 py-2 text-xs font-bold text-purple-400 hover:bg-purple-500/20 transition-colors shadow-xs"

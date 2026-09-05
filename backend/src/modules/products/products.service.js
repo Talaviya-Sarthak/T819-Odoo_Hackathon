@@ -1,6 +1,6 @@
 'use strict';
 
-const { PrismaClient, Prisma } = require('@prisma/client');
+const { Prisma } = require('@prisma/client');
 const { AppError } = require('../../utils/errors');
 const { logAudit } = require('../../services/audit.service');
 const { generateKey, cache } = require('../../cache');
@@ -11,6 +11,7 @@ const PRODUCTS_LIST_TTL = 60; // 1 minute
 exports.list = async ({ categoryId, search, active, limit = 100, offset = 0 } = {}) => {
   const where = {};
   if (categoryId) where.categoryId = categoryId;
+  if (active !== undefined) where.active = Boolean(active);
 
   const cacheKey = generateKey(
     'products:list',

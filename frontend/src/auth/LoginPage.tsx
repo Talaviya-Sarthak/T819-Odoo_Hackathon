@@ -27,7 +27,11 @@ import AuthBackground from "./AuthBackground";
 import { login } from "../services/auth.api";
 import { useAuth } from "../context/AuthContext";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  (typeof window !== "undefined" && window.location.hostname
+    ? `${window.location.protocol}//${window.location.hostname}:5000`
+    : "http://localhost:5000");
 
 const DEMO_ACCOUNTS = [
   { email: "rep@dealflow360.com", role: "SALES_REP", label: "Sales Rep", color: "border-blue-800/60 bg-blue-950/30 text-blue-400 hover:bg-blue-900/40" },

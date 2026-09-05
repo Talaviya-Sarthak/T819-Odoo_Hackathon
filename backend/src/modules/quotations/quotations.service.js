@@ -1,6 +1,5 @@
 'use strict';
 
-const { PrismaClient } = require('@prisma/client');
 const { AppError } = require('../../utils/errors');
 const { calculateQuotation } = require('../../services/calculation.service');
 const { getEffectiveProductPrice } = require('../../services/pricing.service');
@@ -10,24 +9,51 @@ const { logAudit } = require('../../services/audit.service');
 const { generateKey, cache } = require('../../cache');
 const prisma = require('../../database/prisma');
 
+const QUOTATIONS_LIST_TTL = 30; // 30 seconds
+
 exports.list = async ({ user, status, customerId, salesRepId, limit = 50, offset = 0 } = {}) => {
   const where = {};
-  if (status) where.status = status;
-  if (customerId) where.customerId = customerId;
-  if (salesRepId) where.salesRepId = salesRepId;
 
+  // 1. Role-based isolation
   if (user && user.role === 'CUSTOMER') {
-    const custId = user.customerId || user.customer_id;
+    let custId = user.customerId || user.customer_id;
+    if (!custId && user.id) {
+      const dbUser = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { customerId: true },
+      });
+      custId = dbUser?.customerId;
+    }
+
+    if (!custId) {
+      const customerRecord = await prisma.customer.findFirst({
+        where: {
+          OR: [
+            { email: user.email },
+            { ownerId: user.id },
+          ],
+        },
+      });
+      if (customerRecord) {
+        custId = customerRecord.id;
+      }
+    }
+
     if (custId) {
       where.customerId = custId;
     } else {
-      where.customer = { OR: [{ email: user.email }, { ownerId: user.id }] };
+      return [];
     }
+  } else if (user && user.role === 'SALES_REP') {
+    where.salesRepId = salesRepId || user.id;
+  } else {
+    if (salesRepId) where.salesRepId = salesRepId;
   }
 
-  if (user && user.role === 'SALES_REP') {
-    where.salesRepId = user.id;
+  if (customerId && (!user || user.role !== 'CUSTOMER')) {
+    where.customerId = customerId;
   }
+  if (status) where.status = status;
 
   const cacheKey = generateKey(
     'quotation:list',
@@ -50,8 +76,12 @@ exports.list = async ({ user, status, customerId, salesRepId, limit = 50, offset
     where,
     include: {
       customer: { include: { tier: true } },
-      salesRep: { select: { id: true, name: true, email: true } },
-      lines: { include: { product: true } },
+      salesRep: { select: { id: true, name: true, email: true, role: true } },
+      lines: {
+        include: {
+          product: { include: { category: true } },
+        },
+      },
     },
     orderBy: { createdAt: 'desc' },
     take: Number(limit) || 50,
@@ -59,7 +89,7 @@ exports.list = async ({ user, status, customerId, salesRepId, limit = 50, offset
   });
 
   // Store in cache with 30-second TTL for quotation lists
-  cache.set(cacheKey, result, 30);
+  cache.set(cacheKey, result, QUOTATIONS_LIST_TTL);
 
   return result;
 };
@@ -93,7 +123,15 @@ exports.getById = async (id, user = null) => {
 
   // Security: Customer cannot access other customer's quotation
   if (user && user.role === 'CUSTOMER') {
-    const custId = user.customerId || user.customer_id;
+    let custId = user.customerId || user.customer_id;
+    if (!custId && user.id) {
+      const dbUser = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { customerId: true },
+      });
+      custId = dbUser?.customerId;
+    }
+
     const isOwnCustomer = (custId && custId === quotation.customerId) || 
       (quotation.customer?.email && quotation.customer.email.toLowerCase() === user.email.toLowerCase()) ||
       quotation.customer?.ownerId === user.id;
@@ -413,12 +451,13 @@ exports.submit = async (id, user = null) => {
       customer: true,
       salesRep: true,
       lines: { include: { product: true } },
+      approvalRequests: true,
     },
   });
 
   // Invalidate quotation list cache
   try {
-    cache.delete('quotation:list');
+    cache.clear();
   } catch (e) {
     // Cache deletion failure should not break the operation
   }
@@ -432,7 +471,7 @@ exports.submit = async (id, user = null) => {
         quotationId: id,
         status: 'PENDING',
         riskScore: governance.riskScore || 0,
-        riskLevel: governance.riskLevel || 'LOW',
+        riskLevel: governance.riskLevel || governance.risk || 'LOW',
         currentStep: 1,
         totalSteps,
         requiredRole: initialRole,
@@ -442,7 +481,7 @@ exports.submit = async (id, user = null) => {
             action: 'SUBMITTED',
             step: 1,
             notes: `Submitted by ${user ? user.name || user.email : 'system'}: ${governance.reason || 'Approval required'}`,
-            userId: user?.id,
+            userId: user?.id || quotation.salesRepId,
           },
         },
       },
@@ -454,10 +493,18 @@ exports.submit = async (id, user = null) => {
     action: 'QUOTATION_SUBMIT',
     entityType: 'QUOTATION',
     entityId: id,
-    newValues: { status: nextStatus, approvalRequired: governance.approvalRequired },
+    oldValues: { status: quotation.status },
+    newValues: {
+      status: nextStatus,
+      approvalRequired: governance.approvalRequired,
+      riskLevel: governance.riskLevel || governance.risk,
+    },
   });
 
-  return updatedQuotation;
+  return {
+    quotation: updatedQuotation,
+    governance,
+  };
 };
 
 exports.confirm = async (id, user = null) => {
@@ -466,14 +513,21 @@ exports.confirm = async (id, user = null) => {
     include: { customer: true, salesRep: true, lines: true },
   });
   if (!quotation) throw new AppError('Quotation not found', 404);
-  if (quotation.status !== 'APPROVED') throw new AppError('Only approved quotations can be confirmed', 400);
 
   // Validate state transition: APPROVED -> CUSTOMER_CONFIRMED
   validateTransition(quotation.status, 'CUSTOMER_CONFIRMED');
 
   // Customer authorization check
   if (user && user.role === 'CUSTOMER') {
-    const custId = user.customerId || user.customer_id;
+    let custId = user.customerId || user.customer_id;
+    if (!custId && user.id) {
+      const dbUser = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { customerId: true },
+      });
+      custId = dbUser?.customerId;
+    }
+
     const isOwnCustomer = (custId && custId === quotation.customerId) || 
       (quotation.customer?.email && quotation.customer.email.toLowerCase() === user.email.toLowerCase()) ||
       quotation.customer?.ownerId === user.id;
@@ -482,22 +536,27 @@ exports.confirm = async (id, user = null) => {
 
   // Invalidate quotation list cache
   try {
-    cache.delete('quotation:list');
+    cache.clear();
   } catch (e) {
     // Cache deletion failure should not break the operation
   }
 
   const updated = await prisma.quotation.update({
     where: { id },
-    data: { status: 'CUSTOMER_CONFIRMED', confirmedAt: new Date() },
-    include: { customer: true, salesRep: true, lines: true },
+    data: { status: 'CUSTOMER_CONFIRMED' },
+    include: {
+      customer: true,
+      salesRep: true,
+      lines: { include: { product: true } },
+    },
   });
 
   await logAudit({
     userId: user?.id,
-    action: 'QUOTATION_CONFIRM',
+    action: 'CUSTOMER_CONFIRMED',
     entityType: 'QUOTATION',
     entityId: id,
+    oldValues: { status: quotation.status },
     newValues: { status: 'CUSTOMER_CONFIRMED' },
   });
 

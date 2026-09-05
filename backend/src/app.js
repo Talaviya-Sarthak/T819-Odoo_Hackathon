@@ -16,7 +16,9 @@ const productsRoutes = require('./modules/products/products.routes');
 const customersRoutes = require('./modules/customers/customers.routes');
 const quotationsRoutes = require('./modules/quotations/quotations.routes');
 const discountsRoutes = require('./modules/discounts/discounts.routes');
+const discountRulesRoutes = require('./modules/discounts/discount-rules.routes');
 const approvalsRoutes = require('./modules/approvals/approvals.routes');
+const approvalRulesRoutes = require('./modules/approvals/approval-rules.routes');
 const fulfillmentRoutes = require('./modules/fulfillment/fulfillment.routes');
 const billingRoutes = require('./modules/billing/billing.routes');
 const negotiationsRoutes = require('./modules/negotiations/negotiations.routes');
@@ -34,10 +36,47 @@ const { sendSuccess } = require('./utils/response');
 
 const app = express();
 
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
+
+const allowedOrigins = [
+  config.CLIENT_URL,
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000',
+];
+
 app.use(cors({
-  origin: config.CLIENT_URL,
-  credentials: true
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+
+    // Allow configured origins
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+
+    // Allow local network IP addresses (192.168.x.x, 10.x.x.x, 172.16-31.x.x) on any port
+    if (
+      /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(origin) ||
+      /^http:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(origin) ||
+      /^http:\/\/172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(origin) ||
+      /^http:\/\/localhost(:\d+)?$/.test(origin) ||
+      /^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)
+    ) {
+      return callback(null, true);
+    }
+
+    // In development mode, permit the requesting origin
+    if (config.NODE_ENV === 'development' || !config.NODE_ENV) {
+      return callback(null, true);
+    }
+
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
 }));
 app.use(cookieParser());
 app.use(express.json());
@@ -95,7 +134,9 @@ app.use('/api/products', productsRoutes);
 app.use('/api/customers', customersRoutes);
 app.use('/api/quotations', quotationsRoutes);
 app.use('/api', discountsRoutes);
+app.use('/api/discount-rules', discountRulesRoutes);
 app.use('/api/approvals', approvalsRoutes);
+app.use('/api/approval-rules', approvalRulesRoutes);
 app.use('/api/fulfillment', fulfillmentRoutes);
 app.use('/api/fulfillments', fulfillmentRoutes);
 app.use('/api', billingRoutes);
