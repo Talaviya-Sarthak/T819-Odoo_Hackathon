@@ -72,6 +72,13 @@ export default function Customers() {
     setModalOpen(true);
   };
 
+  const getTierName = (tier: any): string => {
+    if (!tier) return 'BRONZE';
+    if (typeof tier === 'object' && tier.name) return String(tier.name);
+    if (typeof tier === 'string') return tier;
+    return 'BRONZE';
+  };
+
   const openEdit = (c: Customer) => {
     setEditing(c);
     setForm({
@@ -82,7 +89,7 @@ export default function Customers() {
       address: c.address || '',
       city: c.city || '',
       country: c.country || '',
-      tier: c.tier,
+      tier: getTierName(c.tier) as CustomerTier,
       currency: 'USD',
     });
     setModalOpen(true);
@@ -95,7 +102,7 @@ export default function Customers() {
     }
     setSaving(true);
     try {
-      const payload = { ...form, tier: form.tier as CustomerTier };
+      const payload = { ...form, tier: getTierName(form.tier) as CustomerTier };
       if (editing) {
         await updateCustomer(editing.id, payload);
         toast('Customer updated', 'success');
@@ -121,9 +128,12 @@ export default function Customers() {
     {
       key: 'tier',
       label: 'Tier',
-      render: (r: Customer) => (
-        <Badge variant={tierBadgeVariant[r.tier] || 'neutral'}>{r.tier}</Badge>
-      ),
+      render: (r: Customer) => {
+        const tierName = getTierName(r.tier);
+        return (
+          <Badge variant={tierBadgeVariant[tierName] || 'neutral'}>{tierName}</Badge>
+        );
+      },
     },
   ];
 

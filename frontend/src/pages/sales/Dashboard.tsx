@@ -30,9 +30,10 @@ export default function SalesDashboard() {
       setLoading(true);
       setError('');
       const data = await quotationsApi.getAll();
-      setQuotations(data || []);
+      setQuotations(Array.isArray(data) ? data : []);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch dashboard data');
+      setQuotations([]);
     } finally {
       setLoading(false);
     }
@@ -43,25 +44,26 @@ export default function SalesDashboard() {
   }, []);
 
   // Compute live metrics directly from backend quotation dataset
-  const totalPipeline = quotations.reduce((sum, q) => sum + Number(q.grand_total || (q as any).totalAmount || 0), 0);
-  const draftCount = quotations.filter((q) => q.status === 'DRAFT').length;
-  const pendingCount = quotations.filter((q) => q.status === 'PENDING_APPROVAL' || (q.status as any) === 'UNDER_REVIEW' || q.status === 'PENDING').length;
-  const approvedCount = quotations.filter((q) => q.status === 'APPROVED').length;
-  const negotiationCount = quotations.filter((q) => q.status === 'NEGOTIATION').length;
-  const confirmedCount = quotations.filter((q) => q.status === 'CUSTOMER_CONFIRMED' || q.status === 'ORDER_CONFIRMED').length;
+  const list = Array.isArray(quotations) ? quotations : [];
+  const totalPipeline = list.reduce((sum, q) => sum + Number(q.grand_total || (q as any).totalAmount || 0), 0);
+  const draftCount = list.filter((q) => q.status === 'DRAFT').length;
+  const pendingCount = list.filter((q) => q.status === 'PENDING_APPROVAL' || (q.status as any) === 'UNDER_REVIEW' || q.status === 'PENDING').length;
+  const approvedCount = list.filter((q) => q.status === 'APPROVED').length;
+  const negotiationCount = list.filter((q) => q.status === 'NEGOTIATION').length;
+  const confirmedCount = list.filter((q) => q.status === 'CUSTOMER_CONFIRMED' || q.status === 'ORDER_CONFIRMED').length;
 
-  const validMarginQuotes = quotations.filter((q) => (q as any).marginPercentage !== undefined);
+  const validMarginQuotes = list.filter((q) => (q as any).marginPercentage !== undefined);
   const avgMargin = validMarginQuotes.length > 0
     ? (validMarginQuotes.reduce((sum, q) => sum + Number((q as any).marginPercentage || 0), 0) / validMarginQuotes.length).toFixed(1)
     : '0.0';
 
-  const totalSubtotal = quotations.reduce((sum, q) => sum + Number((q as any).subtotal || 0), 0);
-  const totalDiscount = quotations.reduce((sum, q) => sum + Number((q as any).discountAmount || (q as any).discount_total || 0), 0);
+  const totalSubtotal = list.reduce((sum, q) => sum + Number((q as any).subtotal || 0), 0);
+  const totalDiscount = list.reduce((sum, q) => sum + Number((q as any).discountAmount || (q as any).discount_total || 0), 0);
   const avgDiscount = totalSubtotal > 0
     ? ((totalDiscount / totalSubtotal) * 100).toFixed(1)
     : '0.0';
 
-  const recentQuotations = [...quotations]
+  const recentQuotations = [...list]
     .sort((a, b) => new Date(b.created_at || (b as any).createdAt || 0).getTime() - new Date(a.created_at || (a as any).createdAt || 0).getTime())
     .slice(0, 6);
 
