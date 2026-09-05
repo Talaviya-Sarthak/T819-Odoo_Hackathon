@@ -198,6 +198,7 @@ export interface QuotationLine {
 
 export interface Quotation {
   id: string;
+  quotation_number?: string;
   customer_id: string;
   customer_name?: string;
   sales_rep_id: string;
