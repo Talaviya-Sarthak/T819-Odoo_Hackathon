@@ -5,7 +5,7 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "node --watch src/server.js",
-    "build": "npm install",
+    "build": "npm install && npx prisma generate --schema=../prisma/schema.prisma",
     "start": "node src/server.js",
     "setup": "node src/setup.js",
     "seed": "node src/seed.js",
