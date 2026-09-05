@@ -6,12 +6,27 @@ const authController = require('./auth.controller');
 const { authenticate } = require('../../middlewares/auth.middleware');
 const { validateRegister, validateLogin, validateVerifyOtp, validateForgotPassword, validateResetPassword } = require('./auth.validation');
 const rbacService = require('../../services/rbac.service');
+const { generateKey, cache } = require('../../cache');
 const { sendSuccess } = require('../../utils/response');
 
-// Public: get roles available for self-registration
+// Cache for public roles - fetched once, valid for 10 minutes
+const PUBLIC_ROLES_CACHE_KEY = 'auth:public:roles';
+
 router.get('/roles', async (req, res, next) => {
   try {
-    const roles = await rbacService.getPublicRoles();
+    // Check cache first
+    const cachedRoles = cache.has(PUBLIC_ROLES_CACHE_KEY) ? cache.get(PUBLIC_ROLES_CACHE_KEY) : null;
+    let roles;
+
+    if (cachedRoles) {
+      roles = cachedRoles;
+    } else {
+      const rolesData = await rbacService.getPublicRoles();
+      roles = rolesData.roles || rolesData;
+      // Cache for 10 minutes
+      cache.set(PUBLIC_ROLES_CACHE_KEY, roles, 10 * 60);
+    }
+
     sendSuccess(res, 200, 'Roles fetched', { roles });
   } catch (err) {
     next(err);
