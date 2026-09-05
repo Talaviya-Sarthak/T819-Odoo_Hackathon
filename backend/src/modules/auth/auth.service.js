@@ -8,6 +8,18 @@ const logger = require('../../utils/logger');
 const otpService = require('./email/otp.service');
 const emailService = require('../../services/email/email.service');
 
+function sanitizeUser(user) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    customer_id: user.customer_id,
+    status: user.status,
+    avatar_url: user.avatar_url,
+  };
+}
+
 exports.register = async ({ name, email, password }) => {
   const existing = await userRepository.findByEmail(email);
   if (existing) {
@@ -18,9 +30,9 @@ exports.register = async ({ name, email, password }) => {
   if (skipEmail) {
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await userRepository.create({ name, email, passwordHash, email_verified: true });
-    const accessToken = jwtService.generateAccessToken({ id: user.id, email: user.email });
+    const accessToken = jwtService.generateAccessToken({ id: user.id, email: user.email, role: user.role });
     const refreshToken = jwtService.generateRefreshToken({ id: user.id });
-    return { accessToken, refreshToken, user: { id: user.id, email: user.email, name: user.name }, message: 'Registration successful.' };
+    return { accessToken, refreshToken, user: sanitizeUser(user), message: 'Registration successful.' };
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
@@ -39,9 +51,9 @@ exports.verifyEmail = async ({ email, otp }) => {
     }
     await otpService.verifyOtp(email, otp);
     await userRepository.update(user.id, { email_verified: true });
-    const accessToken = jwtService.generateAccessToken({ id: user.id, email: user.email });
+    const accessToken = jwtService.generateAccessToken({ id: user.id, email: user.email, role: user.role });
     const refreshToken = jwtService.generateRefreshToken({ id: user.id });
-    return { accessToken, refreshToken, user: { id: user.id, email: user.email, name: user.name } };
+    return { accessToken, refreshToken, user: sanitizeUser(user) };
   }
 
   await otpService.verifyOtp(email, otp);
@@ -55,10 +67,10 @@ exports.verifyEmail = async ({ email, otp }) => {
 
   otpService.clearPendingRegistration(email);
 
-  const accessToken = jwtService.generateAccessToken({ id: user.id, email: user.email });
+  const accessToken = jwtService.generateAccessToken({ id: user.id, email: user.email, role: user.role });
   const refreshToken = jwtService.generateRefreshToken({ id: user.id });
 
-  return { accessToken, refreshToken, user: { id: user.id, email: user.email, name: user.name } };
+  return { accessToken, refreshToken, user: sanitizeUser(user) };
 };
 
 exports.resendOtp = async ({ email }) => {
@@ -115,10 +127,14 @@ exports.login = async ({ email, password }) => {
     throw new AppError('Please verify your email first', 403);
   }
 
-  const accessToken = jwtService.generateAccessToken({ id: user.id, email: user.email });
+  if (user.status === 'inactive') {
+    throw new AppError('Account is deactivated. Contact administrator.', 403);
+  }
+
+  const accessToken = jwtService.generateAccessToken({ id: user.id, email: user.email, role: user.role });
   const refreshToken = jwtService.generateRefreshToken({ id: user.id });
 
-  return { accessToken, refreshToken, user: { id: user.id, email: user.email, name: user.name } };
+  return { accessToken, refreshToken, user: sanitizeUser(user) };
 };
 
 exports.refresh = async (refreshToken) => {
@@ -132,7 +148,7 @@ exports.refresh = async (refreshToken) => {
     throw new AppError('User not found', 404);
   }
 
-  const newAccessToken = jwtService.generateAccessToken({ id: user.id, email: user.email });
+  const newAccessToken = jwtService.generateAccessToken({ id: user.id, email: user.email, role: user.role });
   const newRefreshToken = jwtService.generateRefreshToken({ id: user.id });
 
   return { accessToken: newAccessToken, refreshToken: newRefreshToken };
@@ -144,5 +160,5 @@ exports.getCurrentUser = async (userId) => {
     throw new AppError('User not found', 404);
   }
 
-  return { user: { id: user.id, email: user.email, name: user.name, avatar_url: user.avatar_url } };
+  return { user: sanitizeUser(user) };
 };

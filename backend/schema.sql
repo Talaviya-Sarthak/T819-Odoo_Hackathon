@@ -7,6 +7,9 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash VARCHAR(255),
   avatar_url TEXT,
   email_verified BOOLEAN DEFAULT FALSE,
+  role VARCHAR(20) NOT NULL DEFAULT 'CUSTOMER' CHECK (role IN ('SALES_REP','MANAGER_ADMIN','OPS_FINANCE','CUSTOMER')),
+  customer_id VARCHAR(50),
+  status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active','inactive')),
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );

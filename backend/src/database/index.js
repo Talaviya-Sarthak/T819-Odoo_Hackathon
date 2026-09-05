@@ -23,4 +23,4 @@ async function close() {
   if (pool) await pool.end();
 }
 
-module.exports = { connect, query, close };
+module.exports = { connect, query, close, get pool() { return pool; } };
