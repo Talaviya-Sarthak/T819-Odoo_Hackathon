@@ -46,9 +46,15 @@ app.get('/api/health', (req, res) => {
 app.get('/api/protected', authenticate, (req, res) => {
   res.json({
     message: 'You have accessed a protected resource',
-    user: { id: req.user.id, email: req.user.email }
+    user: { id: req.user.id, email: req.user.email, role: req.user.role }
   });
 });
+
+// Role-based portal routes
+app.use('/api/sales', require('./modules/sales/sales.routes'));
+app.use('/api/management', require('./modules/management/management.routes'));
+app.use('/api/operations', require('./modules/operations/operations.routes'));
+app.use('/api/customer', require('./modules/customer/customer.routes'));
 
 app.use(errorHandler);
 

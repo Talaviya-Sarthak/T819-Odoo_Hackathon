@@ -1,4 +1,4 @@
-import type { LoginResponse, RegisterResponse, VerifyEmailResponse } from '../types';
+import type { LoginResponse, RegisterResponse, VerifyEmailResponse, User } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -67,7 +67,7 @@ export async function logout(): Promise<{ message: string }> {
   return request<{ message: string }>('/api/auth/logout', { method: 'POST' });
 }
 
-export async function getCurrentUser(): Promise<{ user: { id: string; email: string; name?: string; avatar_url?: string } }> {
+export async function getCurrentUser(): Promise<{ user: User }> {
   return request('/api/auth/me');
 }
 
