@@ -10,6 +10,7 @@ import ResetPassword from './auth/ResetPassword';
 import Callback from './auth/Callback';
 import Unauthorized from './pages/Unauthorized';
 import AppShell from './components/layout/AppShell';
+import LandingPage from './pages/landing/LandingPage';
 
 // Sales Pages
 import SalesDashboard from './pages/sales/Dashboard';
@@ -162,8 +163,8 @@ function App() {
               <Route index element={<Navigate to="dashboard" replace />} />
             </Route>
 
-            {/* Root redirect */}
-            <Route path="/" element={<Navigate to="/login" replace />} />
+            {/* Landing Page */}
+            <Route path="/" element={<LandingPage />} />
 
             {/* Catch-all */}
             <Route path="*" element={<Navigate to="/login" replace />} />
