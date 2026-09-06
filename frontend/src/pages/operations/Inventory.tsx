@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { inventoryApi, warehousesApi } from '../../api';
 import { useToast } from '../../components/Toast';
+import PaginationControls from '../../components/PaginationControls';
 
 interface StockItem {
   id: string;
@@ -40,6 +41,17 @@ export default function Inventory() {
   const [warehouseFilter, setWarehouseFilter] = useState('');
   const [lowStockFilter, setLowStockFilter] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  });
 
   // Stock Adjustment Modal state
   const [adjustModalOpen, setAdjustModalOpen] = useState(false);
@@ -51,8 +63,16 @@ export default function Inventory() {
   const { toast } = useToast();
 
   useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
     loadData();
-  }, [warehouseFilter, lowStockFilter]);
+  }, [warehouseFilter, lowStockFilter, page, limit, debouncedSearch]);
 
   async function loadData() {
     try {
@@ -61,11 +81,28 @@ export default function Inventory() {
         inventoryApi.getAll({
           warehouseId: warehouseFilter || undefined,
           lowStock: lowStockFilter || undefined,
+          search: debouncedSearch || undefined,
+          page,
+          limit,
         }),
         warehousesApi.getAll(),
       ]);
-      setStocks(Array.isArray(stocksRes) ? stocksRes : []);
+      const items = Array.isArray(stocksRes) ? stocksRes : [];
+      setStocks(items);
       setWarehouses(Array.isArray(whRes) ? whRes : []);
+      if ((stocksRes as any)?.pagination) {
+        setPagination((stocksRes as any).pagination);
+      } else {
+        const total = (stocksRes as any)?.total ?? items.length;
+        setPagination({
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit) || 1,
+          hasNextPage: page * limit < total,
+          hasPreviousPage: page > 1,
+        });
+      }
     } catch {
       toast('Failed to load inventory stock levels', 'error');
     } finally {
@@ -328,6 +365,15 @@ export default function Inventory() {
           </div>
         )}
       </div>
+
+      <PaginationControls
+        page={pagination.page}
+        limit={pagination.limit}
+        total={pagination.total}
+        totalPages={pagination.totalPages}
+        onPageChange={(newPage) => setPage(newPage)}
+        onLimitChange={(newLimit) => { setLimit(newLimit); setPage(1); }}
+      />
 
       {/* Adjust Stock Modal */}
       {adjustModalOpen && selectedStock && (

@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import { useToast } from '../../components/Toast';
+import PaginationControls from '../../components/PaginationControls';
 import { 
   Users, 
   Plus, 
@@ -68,16 +69,53 @@ export default function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  });
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const load = async () => {
     setLoading(true);
     try {
-      const res = await getCustomers();
-      setCustomers(res.customers || []);
+      const res = await getCustomers({
+        page,
+        limit,
+        search: debouncedSearch || undefined,
+      });
+      const items = res.customers || [];
+      setCustomers(items);
+      if (res.pagination) {
+        setPagination(res.pagination);
+      } else {
+        const total = res.total ?? items.length;
+        setPagination({
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit) || 1,
+          hasNextPage: page * limit < total,
+          hasPreviousPage: page > 1,
+        });
+      }
     } catch (err: any) {
       toast.fail(err?.message || 'Failed to load customers');
     } finally {
@@ -85,15 +123,11 @@ export default function Customers() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, [page, limit, debouncedSearch]);
 
-  const filtered = useMemo(() => {
-    return customers.filter((c) =>
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.company?.toLowerCase().includes(search.toLowerCase()) ||
-      c.email.toLowerCase().includes(search.toLowerCase())
-    );
-  }, [customers, search]);
+  const filtered = customers;
 
   const getTierName = (tier: any): string => {
     if (!tier) return 'BRONZE';
@@ -364,6 +398,15 @@ export default function Customers() {
           </div>
         )}
       </div>
+
+      <PaginationControls
+        page={pagination.page}
+        limit={pagination.limit}
+        total={pagination.total}
+        totalPages={pagination.totalPages}
+        onPageChange={(newPage) => setPage(newPage)}
+        onLimitChange={(newLimit) => { setLimit(newLimit); setPage(1); }}
+      />
 
       {/* Clean Edit / Create Modal */}
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Customer Profile' : 'Register New Customer'} size="lg">

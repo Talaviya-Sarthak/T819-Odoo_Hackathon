@@ -6,7 +6,14 @@ const { sendSuccess } = require('../../utils/response');
 exports.list = async (req, res, next) => {
   try {
     const result = await productsService.list(req.query);
-    sendSuccess(res, 200, 'Products fetched', { products: result });
+    sendSuccess(res, 200, 'Products fetched', {
+      products: result,
+      pagination: result.pagination,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+    });
   } catch (err) {
     next(err);
   }

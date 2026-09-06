@@ -15,7 +15,15 @@ exports.createFromQuotation = async (req, res, next) => {
 exports.list = async (req, res, next) => {
   try {
     const result = await ordersService.list({ ...req.query, user: req.user });
-    sendSuccess(res, 200, 'Sales orders fetched', { orders: result, salesOrders: result });
+    sendSuccess(res, 200, 'Sales orders fetched', {
+      orders: result,
+      salesOrders: result,
+      pagination: result.pagination,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+    });
   } catch (err) {
     next(err);
   }

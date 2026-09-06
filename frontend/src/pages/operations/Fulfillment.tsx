@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { fulfillmentApi, ordersApi, warehousesApi } from '../../api';
 import { useToast } from '../../components/Toast';
+import PaginationControls from '../../components/PaginationControls';
 
 interface FulfillmentLine {
   id: string;
@@ -21,7 +22,7 @@ interface FulfillmentRecord {
   fulfillmentNumber?: string;
   salesOrderId: string;
   warehouseId: string;
-  status: 'PENDING' | 'ALLOCATED' | 'PARTIALLY_FULFILLED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
+  status: 'PENDING' | 'ALLOCATED' | 'PARTIALLY_FULFILLED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'FULFILLED' | 'CANCELLED';
   notes?: string;
   trackingNumber?: string;
   shippedAt?: string;
@@ -50,6 +51,16 @@ export default function Fulfillment() {
   const [pendingOrders, setPendingOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  });
   const [searchParams] = useSearchParams();
 
   // Create Fulfillment Modal State
@@ -69,7 +80,7 @@ export default function Fulfillment() {
 
   useEffect(() => {
     loadData();
-  }, [statusFilter]);
+  }, [statusFilter, page, limit]);
 
   useEffect(() => {
     const orderIdParam = searchParams.get('orderId');
@@ -89,7 +100,11 @@ export default function Fulfillment() {
     try {
       setLoading(true);
       const [fList, whList, oList] = await Promise.all([
-        fulfillmentApi.getAll({ status: statusFilter || undefined }),
+        fulfillmentApi.getAll({
+          status: statusFilter || undefined,
+          page,
+          limit,
+        }),
         warehousesApi.getAll(),
         ordersApi.getAll(),
       ]);
@@ -101,6 +116,20 @@ export default function Fulfillment() {
         : [];
       setFulfillments(fulfillmentRecords);
       setWarehouses(Array.isArray(whList) ? whList : []);
+
+      if ((fList as any)?.pagination) {
+        setPagination((fList as any).pagination);
+      } else {
+        const total = (fList as any)?.total ?? fulfillmentRecords.length;
+        setPagination({
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit) || 1,
+          hasNextPage: page * limit < total,
+          hasPreviousPage: page > 1,
+        });
+      }
 
       const ordersList = Array.isArray(oList)
         ? oList
@@ -404,6 +433,15 @@ export default function Fulfillment() {
           </div>
         )}
       </div>
+
+      <PaginationControls
+        page={pagination.page}
+        limit={pagination.limit}
+        total={pagination.total}
+        totalPages={pagination.totalPages}
+        onPageChange={(newPage) => setPage(newPage)}
+        onLimitChange={(newLimit) => { setLimit(newLimit); setPage(1); }}
+      />
 
       {/* Create / Allocate Fulfillment Modal */}
       {createModalOpen && selectedOrderObj && (

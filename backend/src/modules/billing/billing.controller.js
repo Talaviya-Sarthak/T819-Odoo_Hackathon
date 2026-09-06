@@ -45,7 +45,14 @@ exports.createInvoiceFromSchedule = async (req, res, next) => {
 exports.listInvoices = async (req, res, next) => {
   try {
     const result = await billingService.listInvoices({ ...req.query, user: req.user });
-    sendSuccess(res, 200, 'Invoices fetched', { invoices: result });
+    sendSuccess(res, 200, 'Invoices fetched', {
+      invoices: result,
+      pagination: result.pagination,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+    });
   } catch (err) {
     next(err);
   }
@@ -116,7 +123,14 @@ exports.recordPayment = async (req, res, next) => {
 exports.listPayments = async (req, res, next) => {
   try {
     const result = await billingService.listPayments({ ...req.query, user: req.user });
-    sendSuccess(res, 200, 'Payments fetched', { payments: result });
+    sendSuccess(res, 200, 'Payments fetched', {
+      payments: result,
+      pagination: result.pagination,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+    });
   } catch (err) {
     next(err);
   }
@@ -145,7 +159,14 @@ exports.getPlans = async (req, res, next) => {
 exports.listSubscriptions = async (req, res, next) => {
   try {
     const result = await billingService.listSubscriptions({ ...req.query, user: req.user });
-    sendSuccess(res, 200, 'Subscriptions fetched', { subscriptions: result });
+    sendSuccess(res, 200, 'Subscriptions fetched', {
+      subscriptions: result,
+      pagination: result.pagination,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+    });
   } catch (err) {
     next(err);
   }

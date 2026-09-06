@@ -5,6 +5,7 @@ import { quotationsApi } from '../../api';
 import type { Quotation } from '../../types';
 import { useToast } from '../../components/Toast';
 import { Skeleton } from '../../components/ui/skeleton';
+import PaginationControls from '../../components/PaginationControls';
 import { 
   Plus, 
   Search, 
@@ -36,12 +37,49 @@ export default function Quotations() {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  });
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const loadQuotations = async () => {
     try {
       setLoading(true);
-      const data = await quotationsApi.getAll();
-      setQuotations(Array.isArray(data) ? data : []);
+      const data = await quotationsApi.getAll({
+        page,
+        limit,
+        search: debouncedSearch || undefined,
+      });
+      const items = Array.isArray(data) ? data : [];
+      setQuotations(items);
+      if ((data as any).pagination) {
+        setPagination((data as any).pagination);
+      } else {
+        const total = (data as any).total ?? items.length;
+        setPagination({
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit) || 1,
+          hasNextPage: page * limit < total,
+          hasPreviousPage: page > 1,
+        });
+      }
     } catch (err: any) {
       console.error('Failed to load quotations:', err);
       toast.fail(err.message || 'Failed to load quotations');
@@ -52,7 +90,7 @@ export default function Quotations() {
 
   useEffect(() => {
     loadQuotations();
-  }, []);
+  }, [page, limit, debouncedSearch]);
 
   const filteredQuotes = quotations.filter((q) => {
     const qNum = (q as any).quotationNumber || (q as any).quotation_number || '';
@@ -346,6 +384,15 @@ export default function Quotations() {
           </div>
         </div>
       )}
+
+      <PaginationControls
+        page={pagination.page}
+        limit={pagination.limit}
+        total={pagination.total}
+        totalPages={pagination.totalPages}
+        onPageChange={(newPage) => setPage(newPage)}
+        onLimitChange={(newLimit) => { setLimit(newLimit); setPage(1); }}
+      />
     </div>
   );
 }

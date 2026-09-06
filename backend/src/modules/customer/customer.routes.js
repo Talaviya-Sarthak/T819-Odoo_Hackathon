@@ -35,7 +35,14 @@ router.get('/dashboard', async (req, res, next) => {
 router.get('/quotations', async (req, res, next) => {
   try {
     const quotations = await quotationsService.list({ ...req.query, user: req.user });
-    sendSuccess(res, 200, 'Customer quotations', { quotations });
+    sendSuccess(res, 200, 'Customer quotations', {
+      quotations,
+      pagination: quotations.pagination,
+      total: quotations.total,
+      page: quotations.page,
+      limit: quotations.limit,
+      totalPages: quotations.totalPages,
+    });
   } catch (err) {
     next(err);
   }
@@ -44,7 +51,14 @@ router.get('/quotations', async (req, res, next) => {
 router.get('/orders', async (req, res, next) => {
   try {
     const orders = await ordersService.list({ ...req.query, user: req.user });
-    sendSuccess(res, 200, 'Customer orders', { orders });
+    sendSuccess(res, 200, 'Customer orders', {
+      orders,
+      pagination: orders.pagination,
+      total: orders.total,
+      page: orders.page,
+      limit: orders.limit,
+      totalPages: orders.totalPages,
+    });
   } catch (err) {
     next(err);
   }
@@ -53,7 +67,14 @@ router.get('/orders', async (req, res, next) => {
 router.get('/invoices', async (req, res, next) => {
   try {
     const invoices = await billingService.listInvoices({ ...req.query, user: req.user });
-    sendSuccess(res, 200, 'Customer invoices', { invoices });
+    sendSuccess(res, 200, 'Customer invoices', {
+      invoices,
+      pagination: invoices.pagination,
+      total: invoices.total,
+      page: invoices.page,
+      limit: invoices.limit,
+      totalPages: invoices.totalPages,
+    });
   } catch (err) {
     next(err);
   }
@@ -74,7 +95,14 @@ router.get('/invoices/:id/download', billingController.downloadInvoicePdf);
 router.get('/payments', async (req, res, next) => {
   try {
     const payments = await billingService.listPayments({ ...req.query, user: req.user });
-    sendSuccess(res, 200, 'Customer payments', { payments });
+    sendSuccess(res, 200, 'Customer payments', {
+      payments,
+      pagination: payments.pagination,
+      total: payments.total,
+      page: payments.page,
+      limit: payments.limit,
+      totalPages: payments.totalPages,
+    });
   } catch (err) {
     next(err);
   }

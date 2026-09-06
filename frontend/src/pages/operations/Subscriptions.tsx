@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { subscriptionsApi, invoicesApi } from '../../api';
 import { useToast } from '../../components/Toast';
+import PaginationControls from '../../components/PaginationControls';
 
 interface BillingScheduleItem {
   id: string;
@@ -46,6 +47,16 @@ interface SubscriptionRecord {
 export default function OperationsSubscriptions() {
   const [subscriptions, setSubscriptions] = useState<SubscriptionRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  });
   const [selectedSub, setSelectedSub] = useState<SubscriptionRecord | null>(null);
   const [schedules, setSchedules] = useState<BillingScheduleItem[]>([]);
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
@@ -56,13 +67,27 @@ export default function OperationsSubscriptions() {
 
   useEffect(() => {
     loadSubscriptions();
-  }, []);
+  }, [page, limit]);
 
   async function loadSubscriptions() {
     try {
       setLoading(true);
-      const data = await subscriptionsApi.getAll();
-      setSubscriptions(data);
+      const data = await subscriptionsApi.getAll({ page, limit });
+      const items = Array.isArray(data) ? data : [];
+      setSubscriptions(items);
+      if ((data as any)?.pagination) {
+        setPagination((data as any).pagination);
+      } else {
+        const total = (data as any)?.total ?? items.length;
+        setPagination({
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit) || 1,
+          hasNextPage: page * limit < total,
+          hasPreviousPage: page > 1,
+        });
+      }
     } catch {
       toast('Failed to load subscriptions', 'error');
     } finally {
@@ -275,6 +300,15 @@ export default function OperationsSubscriptions() {
           </div>
         )}
       </div>
+
+      <PaginationControls
+        page={pagination.page}
+        limit={pagination.limit}
+        total={pagination.total}
+        totalPages={pagination.totalPages}
+        onPageChange={(newPage) => setPage(newPage)}
+        onLimitChange={(newLimit) => { setLimit(newLimit); setPage(1); }}
+      />
 
       {/* Billing Schedule Timeline Modal */}
       {scheduleModalOpen && selectedSub && (

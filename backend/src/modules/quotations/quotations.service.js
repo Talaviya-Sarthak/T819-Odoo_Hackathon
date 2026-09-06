@@ -9,9 +9,13 @@ const { logAudit } = require('../../services/audit.service');
 const { generateKey, cache } = require('../../cache');
 const prisma = require('../../database/prisma');
 
+const { parsePagination, paginateResult } = require('../../utils/pagination');
+
 const QUOTATIONS_LIST_TTL = 30; // 30 seconds
 
-exports.list = async ({ user, status, customerId, salesRepId, limit = 50, offset = 0 } = {}) => {
+exports.list = async (query = {}) => {
+  const { user, status, customerId, salesRepId, search } = query;
+  const { page, limit, skip, take } = parsePagination(query, { defaultLimit: 10, maxLimit: 100 });
   const where = {};
 
   // 1. Role-based isolation
@@ -42,7 +46,7 @@ exports.list = async ({ user, status, customerId, salesRepId, limit = 50, offset
     if (custId) {
       where.customerId = custId;
     } else {
-      return [];
+      return paginateResult([], 0, page, limit);
     }
   } else if (user && user.role === 'SALES_REP') {
     where.salesRepId = salesRepId || user.id;
@@ -60,6 +64,17 @@ exports.list = async ({ user, status, customerId, salesRepId, limit = 50, offset
     where.status = status;
   }
 
+  if (search) {
+    const trimmed = String(search).trim();
+    if (trimmed) {
+      where.OR = [
+        { quotationNumber: { contains: trimmed, mode: 'insensitive' } },
+        { customer: { name: { contains: trimmed, mode: 'insensitive' } } },
+        { notes: { contains: trimmed, mode: 'insensitive' } },
+      ];
+    }
+  }
+
   const cacheKey = generateKey(
     'quotation:list',
     user?.id,
@@ -67,8 +82,9 @@ exports.list = async ({ user, status, customerId, salesRepId, limit = 50, offset
     status,
     customerId,
     salesRepId,
-    limit,
-    offset
+    search,
+    page,
+    limit
   );
 
   // Check cache first
@@ -77,21 +93,26 @@ exports.list = async ({ user, status, customerId, salesRepId, limit = 50, offset
     return cached;
   }
 
-  const result = await prisma.quotation.findMany({
-    where,
-    include: {
-      customer: { include: { tier: true } },
-      salesRep: { select: { id: true, name: true, email: true, role: true } },
-      lines: {
-        include: {
-          product: { include: { category: true } },
+  const [total, items] = await Promise.all([
+    prisma.quotation.count({ where }),
+    prisma.quotation.findMany({
+      where,
+      include: {
+        customer: { include: { tier: true } },
+        salesRep: { select: { id: true, name: true, email: true, role: true } },
+        lines: {
+          include: {
+            product: { include: { category: true } },
+          },
         },
       },
-    },
-    orderBy: { createdAt: 'desc' },
-    take: Number(limit) || 50,
-    skip: Number(offset) || 0,
-  });
+      orderBy: { createdAt: 'desc' },
+      take,
+      skip,
+    }),
+  ]);
+
+  const result = paginateResult(items, total, page, limit);
 
   // Store in cache with 30-second TTL for quotation lists
   cache.set(cacheKey, result, QUOTATIONS_LIST_TTL);

@@ -6,7 +6,15 @@ const { sendSuccess } = require('../../utils/response');
 exports.list = async (req, res, next) => {
   try {
     const result = await approvalsService.list({ ...req.query, user: req.user });
-    sendSuccess(res, 200, 'Approval requests fetched', { approvals: result, approvalRequests: result });
+    sendSuccess(res, 200, 'Approval requests fetched', {
+      approvals: result,
+      approvalRequests: result,
+      pagination: result.pagination,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+    });
   } catch (err) {
     next(err);
   }

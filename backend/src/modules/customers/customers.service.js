@@ -5,9 +5,13 @@ const { logAudit } = require('../../services/audit.service');
 const { generateKey, cache } = require('../../cache');
 const prisma = require('../../database/prisma');
 
+const { parsePagination, paginateResult } = require('../../utils/pagination');
+
 const CUSTOMERS_LIST_TTL = 60; // 1 minute
 
-exports.list = async ({ user, tierId, search, myCustomers, limit = 500, offset = 0 } = {}) => {
+exports.list = async (query = {}) => {
+  const { user, tierId, search, myCustomers } = query;
+  const { page, limit, skip, take } = parsePagination(query, { defaultLimit: 10, maxLimit: 500 });
   const where = {};
   if (tierId) where.tierId = tierId;
 
@@ -28,16 +32,19 @@ exports.list = async ({ user, tierId, search, myCustomers, limit = 500, offset =
   }
 
   if (search) {
-    const searchFilter = [
-      { name: { contains: search, mode: 'insensitive' } },
-      { company: { contains: search, mode: 'insensitive' } },
-      { email: { contains: search, mode: 'insensitive' } },
-    ];
-    if (where.OR) {
-      where.AND = [{ OR: where.OR }, { OR: searchFilter }];
-      delete where.OR;
-    } else {
-      where.OR = searchFilter;
+    const trimmed = String(search).trim();
+    if (trimmed) {
+      const searchFilter = [
+        { name: { contains: trimmed, mode: 'insensitive' } },
+        { company: { contains: trimmed, mode: 'insensitive' } },
+        { email: { contains: trimmed, mode: 'insensitive' } },
+      ];
+      if (where.OR) {
+        where.AND = [{ OR: where.OR }, { OR: searchFilter }];
+        delete where.OR;
+      } else {
+        where.OR = searchFilter;
+      }
     }
   }
 
@@ -48,8 +55,8 @@ exports.list = async ({ user, tierId, search, myCustomers, limit = 500, offset =
     tierId,
     search,
     myCustomers,
-    limit,
-    offset
+    query.all ? 'all' : page,
+    limit
   );
 
   // Check cache first
@@ -58,16 +65,21 @@ exports.list = async ({ user, tierId, search, myCustomers, limit = 500, offset =
     return cached;
   }
 
-  const result = await prisma.customer.findMany({
-    where,
-    include: {
-      tier: true,
-      salesRep: { select: { id: true, name: true, email: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-    take: Number(limit) || 500,
-    skip: Number(offset) || 0,
-  });
+  const [total, items] = await Promise.all([
+    prisma.customer.count({ where }),
+    prisma.customer.findMany({
+      where,
+      include: {
+        tier: true,
+        salesRep: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
+      skip,
+    }),
+  ]);
+
+  const result = paginateResult(items, total, page, limit);
 
   // Store in cache with 1-minute TTL
   cache.set(cacheKey, result, CUSTOMERS_LIST_TTL);

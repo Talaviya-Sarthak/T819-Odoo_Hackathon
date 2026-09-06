@@ -47,21 +47,44 @@ export default function Users() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [roleFilter, setRoleFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  });
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiGet<any>('/api/management/users?limit=100');
+      const res = await apiGet<any>(`/api/management/users?page=${page}&limit=${limit}`);
       const list = res.users || res.data?.users || res.data || [];
-      if (Array.isArray(list) && list.length > 0) {
+      if (Array.isArray(list)) {
         setUsers(list);
+      }
+      if (res.pagination) {
+        setPagination(res.pagination);
+      } else {
+        const total = res.total ?? (Array.isArray(list) ? list.length : 0);
+        setPagination({
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit) || 1,
+          hasNextPage: page * limit < total,
+          hasPreviousPage: page > 1,
+        });
       }
     } catch {
       toast.error('Failed to load users from database');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, limit]);
 
   useEffect(() => {
     fetchUsers();
@@ -199,7 +222,15 @@ export default function Users() {
         <Tabs tabs={roleTabs} activeTab={roleFilter} onChange={setRoleFilter} />
       </div>
 
-      <DataTable columns={columns} data={filtered as any} loading={loading} emptyMessage="No users found in this role." />
+      <DataTable
+        columns={columns}
+        data={filtered as any}
+        loading={loading}
+        emptyMessage="No users found in this role."
+        pagination={pagination}
+        onPageChange={(newPage) => setPage(newPage)}
+        onLimitChange={(newLimit) => { setLimit(newLimit); setPage(1); }}
+      />
     </div>
   );
 }

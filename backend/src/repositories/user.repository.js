@@ -68,9 +68,52 @@ exports.findByRole = async (role) => {
   return result.rows || result || [];
 };
 
-exports.findAll = async () => {
-  const result = await query('SELECT id, email, name, role, customer_id, status, avatar_url, email_verified, created_at, updated_at FROM users ORDER BY created_at DESC');
-  return result.rows || result || [];
+const { parsePagination, paginateResult } = require('../utils/pagination');
+
+exports.findAll = async (options = {}) => {
+  const { search, role, status } = options;
+  const { page, limit, skip, take } = parsePagination(options, { defaultLimit: 10, maxLimit: 100 });
+
+  const conditions = [];
+  const params = [];
+  let paramIdx = 1;
+
+  if (role) {
+    conditions.push(`role = $${paramIdx++}`);
+    params.push(role);
+  }
+
+  if (status) {
+    conditions.push(`status = $${paramIdx++}`);
+    params.push(status);
+  }
+
+  if (search) {
+    const trimmed = String(search).trim();
+    if (trimmed) {
+      conditions.push(`(name ILIKE $${paramIdx} OR email ILIKE $${paramIdx})`);
+      params.push(`%${trimmed}%`);
+      paramIdx++;
+    }
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const countSql = `SELECT COUNT(*)::int AS count FROM users ${whereClause}`;
+  const dataSql = `SELECT id, email, name, role, customer_id, status, avatar_url, email_verified, created_at, updated_at
+                   FROM users ${whereClause}
+                   ORDER BY created_at DESC
+                   LIMIT $${paramIdx++} OFFSET $${paramIdx++}`;
+
+  const [countRes, dataRes] = await Promise.all([
+    query(countSql, params),
+    query(dataSql, [...params, take, skip]),
+  ]);
+
+  const total = countRes.rows?.[0]?.count ?? (countRes[0]?.count || 0);
+  const items = dataRes.rows || dataRes || [];
+
+  return paginateResult(items, total, page, limit);
 };
 
 exports.updateStatus = async (id, status) => {

@@ -21,6 +21,9 @@ export default function Products() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState(emptyProduct);
@@ -29,33 +32,41 @@ export default function Products() {
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await getProducts();
+      const res = await getProducts({ page, limit, search: search.trim() || undefined });
       const list = Array.isArray(res) ? res : res?.products || [];
       setProducts(list);
+      if ((res as any)?.pagination) {
+        setPagination((res as any).pagination);
+      } else if (res?.total !== undefined) {
+        setPagination({
+          page: (res as any).page || page,
+          limit: (res as any).limit || limit,
+          total: res.total,
+          totalPages: (res as any).totalPages || Math.ceil(res.total / limit) || 1,
+        });
+      }
     } catch {
       toast.fail('Failed to load products');
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [page, limit, search, toast]);
 
-  useEffect(() => { fetchProducts(); }, [fetchProducts]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchProducts();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [fetchProducts]);
 
   const list = Array.isArray(products) ? products : [];
-  const filtered = useMemo(() => {
-    return list.filter(
-      (p) =>
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        p.sku.toLowerCase().includes(search.toLowerCase())
-    );
-  }, [list, search]);
 
   const stats = useMemo(() => {
-    const total = list.length;
+    const total = pagination.total || list.length;
     const active = list.filter(p => (p as any).active ?? p.is_active ?? true).length;
-    const avgPrice = total > 0 ? list.reduce((sum, p) => sum + Number((p as any).basePrice || p.base_price || 0), 0) / total : 0;
+    const avgPrice = list.length > 0 ? list.reduce((sum, p) => sum + Number((p as any).basePrice || p.base_price || 0), 0) / list.length : 0;
     return { total, active, avgPrice };
-  }, [list]);
+  }, [list, pagination.total]);
 
   const openCreate = () => { setEditing(null); setForm(emptyProduct); setModalOpen(true); };
   const openEdit = (p: Product) => {
@@ -243,16 +254,30 @@ export default function Products() {
             type="text"
             placeholder="Search product name or SKU..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             className="h-8 w-full rounded-lg border border-border/60 bg-background pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none"
           />
         </div>
         <span className="text-xs text-muted-foreground font-medium">
-          Showing {filtered.length} of {list.length} products
+          Showing {list.length} of {pagination.total || list.length} products
         </span>
       </div>
 
-      <DataTable columns={columns} data={filtered as any} loading={loading} emptyMessage="No products found in catalog" />
+      <DataTable
+        columns={columns}
+        data={products}
+        loading={loading}
+        emptyMessage="No products found in catalog"
+        pagination={pagination}
+        onPageChange={setPage}
+        onLimitChange={(newLimit) => {
+          setLimit(newLimit);
+          setPage(1);
+        }}
+      />
 
       {/* Clean Modal */}
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Product SKU' : 'Add New Product SKU'} size="md">

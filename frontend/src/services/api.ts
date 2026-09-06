@@ -1,4 +1,5 @@
 import type { LoginResponse } from '../types';
+import { queryCache, type QueryCacheOptions } from './query-cache';
 
 const API_URL =
   import.meta.env.VITE_API_URL ||
@@ -108,33 +109,79 @@ export async function apiRequest<T>(
   return data as T;
 }
 
-export async function apiGet<T>(endpoint: string): Promise<T> {
-  return apiRequest<T>(endpoint, { method: 'GET' });
+/**
+ * Auto-invalidates related query cache keys when a mutation succeeds
+ */
+function autoInvalidateCache(endpoint: string) {
+  if (endpoint.includes('/api/quotations')) {
+    queryCache.invalidate(['/api/quotations', '/api/reports', '/api/customer/quotations']);
+  } else if (endpoint.includes('/api/orders')) {
+    queryCache.invalidate(['/api/orders', '/api/quotations', '/api/fulfillments', '/api/reports', '/api/customer/orders']);
+  } else if (endpoint.includes('/api/invoices')) {
+    queryCache.invalidate(['/api/invoices', '/api/payments', '/api/orders', '/api/reports', '/api/customer/invoices']);
+  } else if (endpoint.includes('/api/payments')) {
+    queryCache.invalidate(['/api/payments', '/api/invoices', '/api/reports', '/api/customer/payments']);
+  } else if (endpoint.includes('/api/inventory') || endpoint.includes('/api/warehouses')) {
+    queryCache.invalidate(['/api/inventory', '/api/warehouses', '/api/reports']);
+  } else if (endpoint.includes('/api/backorders')) {
+    queryCache.invalidate(['/api/backorders', '/api/inventory', '/api/fulfillments']);
+  } else if (endpoint.includes('/api/fulfillments')) {
+    queryCache.invalidate(['/api/fulfillments', '/api/orders', '/api/inventory', '/api/backorders']);
+  } else if (endpoint.includes('/api/customers')) {
+    queryCache.invalidate(['/api/customers', '/api/quotations', '/api/orders']);
+  } else if (endpoint.includes('/api/products')) {
+    queryCache.invalidate(['/api/products']);
+  } else if (endpoint.includes('/api/management/users')) {
+    queryCache.invalidate(['/api/management/users']);
+  } else if (endpoint.includes('/api/approvals')) {
+    queryCache.invalidate(['/api/approvals', '/api/quotations', '/api/reports']);
+  } else if (endpoint.includes('/api/subscriptions')) {
+    queryCache.invalidate(['/api/subscriptions', '/api/billing-schedules', '/api/reports']);
+  } else {
+    const base = endpoint.split('?')[0] || endpoint;
+    queryCache.invalidate([base]);
+  }
+}
+
+export async function apiGet<T>(endpoint: string, options?: QueryCacheOptions): Promise<T> {
+  return queryCache.fetch<T>(
+    endpoint,
+    (signal) => apiRequest<T>(endpoint, { method: 'GET', signal }),
+    options
+  );
 }
 
 export async function apiPost<T>(endpoint: string, body?: unknown): Promise<T> {
-  return apiRequest<T>(endpoint, {
+  const result = await apiRequest<T>(endpoint, {
     method: 'POST',
     body: body ? JSON.stringify(body) : undefined,
   });
+  autoInvalidateCache(endpoint);
+  return result;
 }
 
 export async function apiPut<T>(endpoint: string, body?: unknown): Promise<T> {
-  return apiRequest<T>(endpoint, {
+  const result = await apiRequest<T>(endpoint, {
     method: 'PUT',
     body: body ? JSON.stringify(body) : undefined,
   });
+  autoInvalidateCache(endpoint);
+  return result;
 }
 
 export async function apiPatch<T>(endpoint: string, body?: unknown): Promise<T> {
-  return apiRequest<T>(endpoint, {
+  const result = await apiRequest<T>(endpoint, {
     method: 'PATCH',
     body: body ? JSON.stringify(body) : undefined,
   });
+  autoInvalidateCache(endpoint);
+  return result;
 }
 
 export async function apiDelete<T>(endpoint: string): Promise<T> {
-  return apiRequest<T>(endpoint, { method: 'DELETE' });
+  const result = await apiRequest<T>(endpoint, { method: 'DELETE' });
+  autoInvalidateCache(endpoint);
+  return result;
 }
 
 export async function apiUpload<T>(endpoint: string, formData: FormData): Promise<T> {

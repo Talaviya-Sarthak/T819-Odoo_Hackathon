@@ -79,7 +79,7 @@ export default function QuoteBuilder() {
     async function loadRefs() {
       try {
         const [custList, prodList] = await Promise.all([
-          customersApi.getAll(),
+          customersApi.getAll({ all: true }),
           productsApi.getAll(),
         ]);
         const finalCust = Array.isArray(custList) ? custList : (custList as any)?.customers || [];
@@ -446,7 +446,7 @@ export default function QuoteBuilder() {
                   type="button"
                   onClick={async () => {
                     try {
-                      const res = await customersApi.getAll();
+                      const res = await customersApi.getAll({ all: true });
                       const list = Array.isArray(res) ? res : (res as any)?.customers || [];
                       setCustomers(list);
                       toast.success(`Refreshed ${list.length} customers`);

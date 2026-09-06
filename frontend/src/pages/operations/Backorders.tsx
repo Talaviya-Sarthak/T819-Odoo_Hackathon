@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { backordersApi, warehousesApi } from '../../api';
 import { useToast } from '../../components/Toast';
+import PaginationControls from '../../components/PaginationControls';
 
 interface BackorderItem {
   id: string;
@@ -22,6 +23,16 @@ export default function Backorders() {
   const [warehouses, setWarehouses] = useState<Array<{ id: string; name: string; code: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  });
 
   // Fulfill Modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -34,17 +45,35 @@ export default function Backorders() {
 
   useEffect(() => {
     loadData();
-  }, [statusFilter]);
+  }, [statusFilter, page, limit]);
 
   async function loadData() {
     try {
       setLoading(true);
       const [boRes, whRes] = await Promise.all([
-        backordersApi.getAll({ status: statusFilter || undefined }),
+        backordersApi.getAll({
+          status: statusFilter || undefined,
+          page,
+          limit,
+        }),
         warehousesApi.getAll(),
       ]);
-      setBackorders(boRes);
+      const items = Array.isArray(boRes) ? boRes : [];
+      setBackorders(items);
       setWarehouses(whRes);
+      if ((boRes as any)?.pagination) {
+        setPagination((boRes as any).pagination);
+      } else {
+        const total = (boRes as any)?.total ?? items.length;
+        setPagination({
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit) || 1,
+          hasNextPage: page * limit < total,
+          hasPreviousPage: page > 1,
+        });
+      }
       if (whRes.length > 0 && !targetWarehouseId) {
         setTargetWarehouseId(whRes[0].id);
       }
@@ -255,6 +284,15 @@ export default function Backorders() {
           </div>
         )}
       </div>
+
+      <PaginationControls
+        page={pagination.page}
+        limit={pagination.limit}
+        total={pagination.total}
+        totalPages={pagination.totalPages}
+        onPageChange={(newPage) => setPage(newPage)}
+        onLimitChange={(newLimit) => { setLimit(newLimit); setPage(1); }}
+      />
 
       {/* Fulfill Backorder Modal */}
       {modalOpen && selectedBackorder && (

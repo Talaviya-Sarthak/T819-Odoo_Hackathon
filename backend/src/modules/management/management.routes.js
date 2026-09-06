@@ -38,8 +38,16 @@ router.get('/approvals', (req, res) => {
 
 router.get('/users', async (req, res, next) => {
   try {
-    const users = await userRepository.findAll();
-    res.json({ message: 'Users list', users });
+    const users = await userRepository.findAll(req.query);
+    res.json({
+      message: 'Users list',
+      users,
+      pagination: users.pagination,
+      total: users.total,
+      page: users.page,
+      limit: users.limit,
+      totalPages: users.totalPages,
+    });
   } catch (err) {
     next(err);
   }

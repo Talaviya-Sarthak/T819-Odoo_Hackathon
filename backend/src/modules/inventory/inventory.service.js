@@ -4,24 +4,45 @@ const prisma = require('../../database/prisma');
 const { AppError } = require('../../utils/errors');
 const { logAudit } = require('../../services/audit.service');
 
-exports.list = async ({ warehouseId, productId } = {}) => {
+const { parsePagination, paginateResult } = require('../../utils/pagination');
+
+exports.list = async (query = {}) => {
+  const { warehouseId, productId, search } = query;
+  const { page, limit, skip, take } = parsePagination(query, { defaultLimit: 10, maxLimit: 100 });
+
   const where = {};
   if (warehouseId) where.warehouseId = warehouseId;
   if (productId) where.productId = productId;
 
-  const stocks = await prisma.warehouseStock.findMany({
-    where,
-    include: {
-      warehouse: { select: { id: true, name: true, code: true, location: true, active: true } },
-      product: { select: { id: true, name: true, sku: true, unit: true, basePrice: true, costPrice: true } },
-    },
-    orderBy: [
-      { warehouse: { name: 'asc' } },
-      { product: { name: 'asc' } },
-    ],
-  });
+  if (search) {
+    const trimmed = String(search).trim();
+    if (trimmed) {
+      where.OR = [
+        { product: { name: { contains: trimmed, mode: 'insensitive' } } },
+        { product: { sku: { contains: trimmed, mode: 'insensitive' } } },
+        { warehouse: { name: { contains: trimmed, mode: 'insensitive' } } },
+      ];
+    }
+  }
 
-  return stocks.map((s) => {
+  const [total, stocks] = await Promise.all([
+    prisma.warehouseStock.count({ where }),
+    prisma.warehouseStock.findMany({
+      where,
+      include: {
+        warehouse: { select: { id: true, name: true, code: true, location: true, active: true } },
+        product: { select: { id: true, name: true, sku: true, unit: true, basePrice: true, costPrice: true } },
+      },
+      orderBy: [
+        { warehouse: { name: 'asc' } },
+        { product: { name: 'asc' } },
+      ],
+      take,
+      skip,
+    }),
+  ]);
+
+  const mapped = stocks.map((s) => {
     const qty = Number.isFinite(Number(s.quantity)) ? Number(s.quantity) : 0;
     const reserved = Number.isFinite(Number(s.reservedQty)) ? Number(s.reservedQty) : 0;
     const available = Math.max(0, qty - reserved);
@@ -63,9 +84,10 @@ exports.list = async ({ warehouseId, productId } = {}) => {
       isLowStock: qty <= reorder,
       unitCost,
       inventoryValue: inventoryVal,
-      updatedAt: s.updatedAt,
     };
   });
+
+  return paginateResult(mapped, total, page, limit);
 };
 
 exports.getById = async (id) => {

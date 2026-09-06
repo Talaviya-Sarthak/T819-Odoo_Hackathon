@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { RefreshCw, Inbox } from 'lucide-react';
 import { Skeleton } from './ui/skeleton';
+import PaginationControls, { PaginationState } from './PaginationControls';
 
 export interface Column<T = any> {
   key: string;
@@ -15,6 +16,10 @@ interface DataTableProps<T = any> {
   loading?: boolean;
   emptyMessage?: string;
   onRowClick?: (row: any) => void;
+  pagination?: PaginationState;
+  onPageChange?: (page: number) => void;
+  onLimitChange?: (limit: number) => void;
+  pageSizeOptions?: number[];
 }
 
 const rowVariants: any = {
@@ -35,7 +40,11 @@ export default function DataTable<T = any>({
   data = [],
   loading = false,
   emptyMessage = 'No data available',
-  onRowClick
+  onRowClick,
+  pagination,
+  onPageChange,
+  onLimitChange,
+  pageSizeOptions,
 }: DataTableProps<T>) {
   if (loading) {
     const colCount = columns.length > 0 ? columns.length : 5;
@@ -142,6 +151,15 @@ export default function DataTable<T = any>({
           </tbody>
         </table>
       </div>
+      {pagination && onPageChange && (
+        <PaginationControls
+          pagination={pagination}
+          onPageChange={onPageChange}
+          onLimitChange={onLimitChange}
+          pageSizeOptions={pageSizeOptions}
+          loading={loading}
+        />
+      )}
     </div>
   );
 }

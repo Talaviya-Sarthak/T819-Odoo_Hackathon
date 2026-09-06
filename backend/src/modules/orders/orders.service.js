@@ -232,7 +232,11 @@ exports.createFromQuotation = async (quotationId, user = null) => {
   return populated;
 };
 
-exports.list = async ({ user = null, status, customerId, limit = 50, offset = 0 } = {}) => {
+const { parsePagination, paginateResult } = require('../../utils/pagination');
+
+exports.list = async (query = {}) => {
+  const { user = null, status, customerId, search } = query;
+  const { page, limit, skip, take } = parsePagination(query, { defaultLimit: 10, maxLimit: 100 });
   const where = {};
 
   // Security Scoping
@@ -245,7 +249,7 @@ exports.list = async ({ user = null, status, customerId, limit = 50, offset = 0 
         where: { OR: [{ email: user.email }, { ownerId: user.id }] },
       });
       if (cust) where.customerId = cust.id;
-      else return [];
+      else return paginateResult([], 0, page, limit);
     }
   } else if (user && user.role === 'SALES_REP') {
     where.quotation = {
@@ -262,20 +266,36 @@ exports.list = async ({ user = null, status, customerId, limit = 50, offset = 0 
     where.status = status;
   }
 
-  return prisma.salesOrder.findMany({
-    where,
-    include: {
-      customer: { select: { id: true, name: true, company: true, email: true } },
-      lines: { include: { product: { select: { id: true, name: true, sku: true } } } },
-      quotation: { select: { id: true, quotationNumber: true } },
-      fulfillments: { select: { id: true, orderNumber: true, status: true } },
-      invoices: { select: { id: true, invoiceNumber: true, status: true, totalAmount: true, balanceDue: true } },
-      backorders: { select: { id: true, quantity: true, status: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-    take: Number(limit),
-    skip: Number(offset),
-  });
+  if (search) {
+    const trimmed = String(search).trim();
+    if (trimmed) {
+      where.OR = [
+        { orderNumber: { contains: trimmed, mode: 'insensitive' } },
+        { customer: { name: { contains: trimmed, mode: 'insensitive' } } },
+        { quotation: { quotationNumber: { contains: trimmed, mode: 'insensitive' } } },
+      ];
+    }
+  }
+
+  const [total, items] = await Promise.all([
+    prisma.salesOrder.count({ where }),
+    prisma.salesOrder.findMany({
+      where,
+      include: {
+        customer: { select: { id: true, name: true, company: true, email: true } },
+        lines: { include: { product: { select: { id: true, name: true, sku: true } } } },
+        quotation: { select: { id: true, quotationNumber: true } },
+        fulfillments: { select: { id: true, orderNumber: true, status: true } },
+        invoices: { select: { id: true, invoiceNumber: true, status: true, totalAmount: true, balanceDue: true } },
+        backorders: { select: { id: true, quantity: true, status: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
+      skip,
+    }),
+  ]);
+
+  return paginateResult(items, total, page, limit);
 };
 
 exports.getById = async (id, user = null) => {

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import { useAuth } from '../../context/AuthContext';
+import { scheduleIdlePrefetch, cancelIdlePrefetch, queueHoverPrefetch, cancelHoverPrefetch } from '../../services/prefetch.service';
 import { 
   PanelLeftClose, 
   PanelLeftOpen, 
@@ -175,6 +176,14 @@ export default function AppShell({ portalName }: AppShellProps) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // Intelligent idle prefetch: after landing on a route, prefetch logically related pages in the background
+  useEffect(() => {
+    scheduleIdlePrefetch(location.pathname, user);
+    return () => {
+      cancelIdlePrefetch();
+    };
+  }, [location.pathname, user]);
 
   const filteredActions = SEARCHABLE_ACTIONS.filter(action =>
     action.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -354,6 +363,8 @@ export default function AppShell({ portalName }: AppShellProps) {
                     return (
                       <div
                         key={action.path}
+                        onMouseEnter={() => queueHoverPrefetch(action.path, user)}
+                        onMouseLeave={cancelHoverPrefetch}
                         onClick={() => {
                           navigate(action.path);
                           setIsSearchOpen(false);

@@ -6,7 +6,14 @@ const { sendSuccess } = require('../../utils/response');
 exports.list = async (req, res, next) => {
   try {
     const result = await backordersService.list(req.query);
-    sendSuccess(res, 200, 'Backorders fetched', { backorders: result });
+    sendSuccess(res, 200, 'Backorders fetched', {
+      backorders: result,
+      pagination: result.pagination,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+    });
   } catch (err) {
     next(err);
   }

@@ -177,7 +177,11 @@ exports.createInvoiceFromSchedule = async (scheduleId, user = null) => {
   return invoice;
 };
 
-exports.listInvoices = async ({ user = null, customerId, status, limit = 50, offset = 0 } = {}) => {
+const { parsePagination, paginateResult } = require('../../utils/pagination');
+
+exports.listInvoices = async (query = {}) => {
+  const { user = null, customerId, status, search } = query;
+  const { page, limit, skip, take } = parsePagination(query, { defaultLimit: 10, maxLimit: 100 });
   const where = {};
 
   if (user && user.role === 'CUSTOMER') {
@@ -188,7 +192,7 @@ exports.listInvoices = async ({ user = null, customerId, status, limit = 50, off
         where: { OR: [{ email: user.email }, { ownerId: user.id }] },
       });
       if (cust) where.customerId = cust.id;
-      else return [];
+      else return paginateResult([], 0, page, limit);
     }
   } else if (customerId) {
     where.customerId = customerId;
@@ -196,19 +200,35 @@ exports.listInvoices = async ({ user = null, customerId, status, limit = 50, off
 
   if (status) where.status = status;
 
-  return prisma.invoice.findMany({
-    where,
-    include: {
-      customer: { select: { id: true, name: true, company: true, email: true } },
-      salesOrder: { select: { id: true, orderNumber: true } },
-      subscription: { select: { id: true, subscriptionNumber: true } },
-      payments: true,
-      lines: true,
-    },
-    orderBy: { createdAt: 'desc' },
-    take: Number(limit),
-    skip: Number(offset),
-  });
+  if (search) {
+    const trimmed = String(search).trim();
+    if (trimmed) {
+      where.OR = [
+        { invoiceNumber: { contains: trimmed, mode: 'insensitive' } },
+        { customer: { name: { contains: trimmed, mode: 'insensitive' } } },
+        { salesOrder: { orderNumber: { contains: trimmed, mode: 'insensitive' } } },
+      ];
+    }
+  }
+
+  const [total, items] = await Promise.all([
+    prisma.invoice.count({ where }),
+    prisma.invoice.findMany({
+      where,
+      include: {
+        customer: { select: { id: true, name: true, company: true, email: true } },
+        salesOrder: { select: { id: true, orderNumber: true } },
+        subscription: { select: { id: true, subscriptionNumber: true } },
+        payments: true,
+        lines: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
+      skip,
+    }),
+  ]);
+
+  return paginateResult(items, total, page, limit);
 };
 
 exports.getInvoiceById = async (id, user = null) => {
@@ -315,7 +335,9 @@ exports.recordPayment = async ({ invoiceId, amount, paymentMethod = 'CREDIT_CARD
   }, { maxWait: 15000, timeout: 60000 });
 };
 
-exports.listPayments = async ({ user = null, invoiceId } = {}) => {
+exports.listPayments = async (query = {}) => {
+  const { user = null, invoiceId, search } = query;
+  const { page, limit, skip, take } = parsePagination(query, { defaultLimit: 10, maxLimit: 100 });
   const where = {};
   if (invoiceId) where.invoiceId = invoiceId;
 
@@ -326,21 +348,39 @@ exports.listPayments = async ({ user = null, invoiceId } = {}) => {
     };
   }
 
-  return prisma.payment.findMany({
-    where,
-    include: {
-      invoice: {
-        select: {
-          id: true,
-          invoiceNumber: true,
-          totalAmount: true,
-          status: true,
-          customer: { select: { id: true, name: true, company: true } },
+  if (search) {
+    const trimmed = String(search).trim();
+    if (trimmed) {
+      where.OR = [
+        { reference: { contains: trimmed, mode: 'insensitive' } },
+        { method: { contains: trimmed, mode: 'insensitive' } },
+        { invoice: { invoiceNumber: { contains: trimmed, mode: 'insensitive' } } },
+      ];
+    }
+  }
+
+  const [total, items] = await Promise.all([
+    prisma.payment.count({ where }),
+    prisma.payment.findMany({
+      where,
+      include: {
+        invoice: {
+          select: {
+            id: true,
+            invoiceNumber: true,
+            totalAmount: true,
+            status: true,
+            customer: { select: { id: true, name: true, company: true } },
+          },
         },
       },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+      orderBy: { createdAt: 'desc' },
+      take,
+      skip,
+    }),
+  ]);
+
+  return paginateResult(items, total, page, limit);
 };
 
 exports.getPaymentById = async (id, user = null) => {
@@ -372,7 +412,9 @@ exports.getPlans = async () => {
   });
 };
 
-exports.listSubscriptions = async ({ user = null, customerId, status } = {}) => {
+exports.listSubscriptions = async (query = {}) => {
+  const { user = null, customerId, status, search } = query;
+  const { page, limit, skip, take } = parsePagination(query, { defaultLimit: 10, maxLimit: 100 });
   const where = {};
 
   if (user && user.role === 'CUSTOMER') {
@@ -389,24 +431,41 @@ exports.listSubscriptions = async ({ user = null, customerId, status } = {}) => 
       if (cust) userCustId = cust.id;
     }
     if (userCustId) where.customerId = userCustId;
-    else return [];
+    else return paginateResult([], 0, page, limit);
   } else if (customerId) {
     where.customerId = customerId;
   }
 
   if (status) where.status = status;
 
-  return prisma.subscription.findMany({
-    where,
-    include: {
-      customer: { select: { id: true, name: true, company: true, email: true } },
-      plan: true,
-      lines: { include: { product: { select: { id: true, name: true, sku: true } } } },
-      billingSchedules: { orderBy: { dueDate: 'asc' } },
-      salesOrder: { select: { id: true, orderNumber: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+  if (search) {
+    const trimmed = String(search).trim();
+    if (trimmed) {
+      where.OR = [
+        { subscriptionNumber: { contains: trimmed, mode: 'insensitive' } },
+        { customer: { name: { contains: trimmed, mode: 'insensitive' } } },
+      ];
+    }
+  }
+
+  const [total, items] = await Promise.all([
+    prisma.subscription.count({ where }),
+    prisma.subscription.findMany({
+      where,
+      include: {
+        customer: { select: { id: true, name: true, company: true, email: true } },
+        plan: true,
+        lines: { include: { product: { select: { id: true, name: true, sku: true } } } },
+        billingSchedules: { orderBy: { dueDate: 'asc' } },
+        salesOrder: { select: { id: true, orderNumber: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
+      skip,
+    }),
+  ]);
+
+  return paginateResult(items, total, page, limit);
 };
 
 exports.getSubscription = async (id, user = null) => {

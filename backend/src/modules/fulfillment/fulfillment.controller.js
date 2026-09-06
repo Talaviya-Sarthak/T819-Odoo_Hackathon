@@ -24,7 +24,15 @@ exports.fulfill = async (req, res, next) => {
 exports.list = async (req, res, next) => {
   try {
     const result = await fulfillmentService.list(req.query);
-    sendSuccess(res, 200, 'Fulfillments fetched', { fulfillments: result, fulfillmentOrders: result });
+    sendSuccess(res, 200, 'Fulfillments fetched', {
+      fulfillments: result,
+      fulfillmentOrders: result,
+      pagination: result.pagination,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+    });
   } catch (err) {
     next(err);
   }

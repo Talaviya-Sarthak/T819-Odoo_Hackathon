@@ -6,7 +6,14 @@ const { sendSuccess } = require('../../utils/response');
 exports.list = async (req, res, next) => {
   try {
     const result = await quotationsService.list({ ...req.query, user: req.user });
-    sendSuccess(res, 200, 'Quotations fetched', { quotations: result });
+    sendSuccess(res, 200, 'Quotations fetched', {
+      quotations: result,
+      pagination: result.pagination,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+    });
   } catch (err) {
     next(err);
   }

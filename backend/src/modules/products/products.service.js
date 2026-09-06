@@ -6,20 +6,38 @@ const { logAudit } = require('../../services/audit.service');
 const { generateKey, cache } = require('../../cache');
 const prisma = require('../../database/prisma');
 
+const { parsePagination, paginateResult } = require('../../utils/pagination');
+
 const PRODUCTS_LIST_TTL = 60; // 1 minute
 
-exports.list = async ({ categoryId, search, active, limit = 100, offset = 0 } = {}) => {
+exports.list = async (query = {}) => {
+  const { categoryId, search, active } = query;
+  const { page, limit, skip, take } = parsePagination(query, { defaultLimit: 10, maxLimit: 100 });
+
   const where = {};
   if (categoryId) where.categoryId = categoryId;
-  if (active !== undefined) where.active = Boolean(active);
+  if (active !== undefined && active !== '') {
+    where.active = active === 'true' || active === true;
+  }
+
+  if (search) {
+    const trimmed = String(search).trim();
+    if (trimmed) {
+      where.OR = [
+        { name: { contains: trimmed, mode: 'insensitive' } },
+        { sku: { contains: trimmed, mode: 'insensitive' } },
+        { description: { contains: trimmed, mode: 'insensitive' } },
+      ];
+    }
+  }
 
   const cacheKey = generateKey(
     'products:list',
     categoryId,
     search,
     active,
-    limit,
-    offset
+    page,
+    limit
   );
 
   // Check cache first
@@ -28,11 +46,18 @@ exports.list = async ({ categoryId, search, active, limit = 100, offset = 0 } = 
     return cached;
   }
 
-  const result = await prisma.product.findMany({
-    where,
-    include: { category: true },
-    orderBy: { createdAt: 'desc' },
-  });
+  const [total, items] = await Promise.all([
+    prisma.product.count({ where }),
+    prisma.product.findMany({
+      where,
+      include: { category: true },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take,
+    }),
+  ]);
+
+  const result = paginateResult(items, total, page, limit);
 
   // Store in cache with 1-minute TTL (products change relatively frequently)
   cache.set(cacheKey, result, PRODUCTS_LIST_TTL);

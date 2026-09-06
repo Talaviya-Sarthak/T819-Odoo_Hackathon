@@ -8,16 +8,24 @@ const { requireRole } = require('../../middlewares/role.middleware');
 const { sendSuccess } = require('../../utils/response');
 const { AppError } = require('../../utils/errors');
 
+const { parsePagination, paginateResult } = require('../../utils/pagination');
+
 // List discount rules
 router.get('/', authenticate, async (req, res, next) => {
   try {
-    const rules = await prisma.discountRule.findMany({
-      include: {
-        customerTier: true,
-        category: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const { page, limit, skip, take } = parsePagination(req.query, { defaultLimit: 10, maxLimit: 100 });
+    const [total, rules] = await Promise.all([
+      prisma.discountRule.count(),
+      prisma.discountRule.findMany({
+        include: {
+          customerTier: true,
+          category: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take,
+        skip,
+      }),
+    ]);
 
     const transformed = rules.map((r) => ({
       id: r.id,
@@ -37,7 +45,17 @@ router.get('/', authenticate, async (req, res, next) => {
       createdAt: r.createdAt,
     }));
 
-    sendSuccess(res, 200, 'Discount rules fetched', { rules: transformed, data: transformed });
+    const result = paginateResult(transformed, total, page, limit);
+
+    sendSuccess(res, 200, 'Discount rules fetched', {
+      rules: result,
+      data: result,
+      pagination: result.pagination,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+    });
   } catch (err) {
     next(err);
   }

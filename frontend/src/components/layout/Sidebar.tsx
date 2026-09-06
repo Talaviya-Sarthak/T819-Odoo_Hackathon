@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { queueHoverPrefetch, cancelHoverPrefetch } from '../../services/prefetch.service';
 import { 
   LayoutDashboard, 
   FolderKanban, 
@@ -181,6 +182,10 @@ export default function Sidebar({
                 <NavLink
                   key={item.id}
                   to={item.path}
+                  onMouseEnter={() => queueHoverPrefetch(item.path, user)}
+                  onMouseLeave={cancelHoverPrefetch}
+                  onFocus={() => queueHoverPrefetch(item.path, user)}
+                  onBlur={cancelHoverPrefetch}
                   className={`group flex items-center justify-between px-2.5 py-[7px] rounded-[6px] cursor-pointer transition-all duration-150
                     ${isActive
                       ? 'bg-primary/10 text-primary font-medium dark:bg-white/10 dark:text-foreground shadow-2xs'

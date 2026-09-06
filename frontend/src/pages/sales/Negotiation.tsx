@@ -45,6 +45,11 @@ export default function SalesNegotiation() {
   const [sending, setSending] = useState(false);
   const [messageInput, setMessageInput] = useState('');
 
+  // Auto-refresh states
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+
   // WebSocket real-time states
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [typingIndicator, setTypingIndicator] = useState<{ isTyping: boolean; name: string } | null>(null);
@@ -86,22 +91,43 @@ export default function SalesNegotiation() {
     loadQuotes();
   }, []);
 
-  // 3. Load quotation details & messages
-  const loadThread = useCallback(async (quoteId: string) => {
+  // 3. Load quotation details & messages (supports silent background auto-refresh)
+  const loadThread = useCallback(async (quoteId: string, silent = false) => {
     if (!quoteId) return;
-    setLoading(true);
+    if (!silent) {
+      setLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
     try {
       const [qData, threadData] = await Promise.all([
-        quotationsApi.getById(quoteId),
-        negotiationsApi.getMessages(quoteId),
+        quotationsApi.getById(quoteId, { forceRefresh: true }),
+        negotiationsApi.getMessages(quoteId, { forceRefresh: true }),
       ]);
       setCurrentQuotation(qData);
-      setThread(threadData);
+      setThread((prev) => {
+        if (!prev) return threadData;
+        const prevMsgs = prev.messages || [];
+        const newMsgs = threadData?.messages || [];
+        if (prevMsgs.length === newMsgs.length) {
+          const hasDifferentId = prevMsgs.some((m, idx) => m.id !== newMsgs[idx]?.id);
+          const hasStatusChange = prev.status !== threadData?.status;
+          const hasChangeReqDiff = (prev.changeRequests?.length || 0) !== (threadData?.changeRequests?.length || 0);
+          if (!hasDifferentId && !hasStatusChange && !hasChangeReqDiff) {
+            return prev;
+          }
+        }
+        return threadData;
+      });
+      setLastRefreshed(new Date());
     } catch (err: any) {
-      console.error('Failed to load negotiation thread:', err);
-      toast.fail(err.message || 'Failed to load negotiation thread');
+      if (!silent) {
+        console.error('Failed to load negotiation thread:', err);
+        toast.fail(err.message || 'Failed to load negotiation thread');
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
+      setIsRefreshing(false);
     }
   }, [toast]);
 
@@ -110,6 +136,30 @@ export default function SalesNegotiation() {
       loadThread(activeQuotationId);
     }
   }, [activeQuotationId, loadThread]);
+
+  // Background auto-refresh polling (every 5 seconds)
+  useEffect(() => {
+    if (!autoRefresh || !activeQuotationId) return;
+
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible' && !loading && !sending) {
+        loadThread(activeQuotationId, true);
+      }
+    }, 5000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && autoRefresh && !loading && !sending) {
+        loadThread(activeQuotationId, true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [autoRefresh, activeQuotationId, loading, sending, loadThread]);
 
   // 4. Manage WebSocket Room & Real-time Event Listeners
   useEffect(() => {
@@ -366,27 +416,59 @@ export default function SalesNegotiation() {
           </div>
         </div>
 
-        {/* Quotation Switcher */}
-        {quotationsList.length > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-muted-foreground">Select Quotation:</span>
-            <select
-              value={activeQuotationId}
-              onChange={(e) => {
-                const newId = e.target.value;
-                setActiveQuotationId(newId);
-                navigate(`/sales/negotiation/${newId}`);
-              }}
-              className="rounded-lg border border-border/60 bg-card px-3 py-1.5 text-xs font-semibold text-foreground focus:border-primary focus:outline-none"
+        {/* Header Right Side: Auto-refresh controls & Quotation Switcher */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Auto Refresh Controls */}
+          <div className="flex items-center gap-2 bg-card border border-border/50 rounded-lg px-2.5 py-1.5 text-xs shadow-xs">
+            <button
+              onClick={() => setAutoRefresh(!autoRefresh)}
+              className={`flex items-center gap-1.5 font-medium px-2 py-0.5 rounded transition-colors cursor-pointer ${
+                autoRefresh 
+                  ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/20' 
+                  : 'bg-muted text-muted-foreground hover:text-foreground border border-border/40'
+              }`}
+              title={autoRefresh ? "Auto-refresh is active (every 5s). Click to pause." : "Auto-refresh is paused. Click to resume."}
             >
-              {quotationsList.map((q) => (
-                <option key={q.id} value={q.id} className="bg-card text-foreground">
-                  {(q as any).quotationNumber || (q as any).quotation_number || q.id.slice(0, 8)} - {(q as any).customer?.name || 'Customer'} ({q.status})
-                </option>
-              ))}
-            </select>
+              <span className={`h-2 w-2 rounded-full ${autoRefresh ? 'bg-emerald-400 animate-pulse' : 'bg-muted-foreground'}`} />
+              <span>Auto-refresh: {autoRefresh ? 'ON' : 'OFF'}</span>
+            </button>
+            <button
+              onClick={() => loadThread(activeQuotationId, false)}
+              disabled={loading || isRefreshing}
+              className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors cursor-pointer disabled:opacity-50"
+              title="Refresh now"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${(loading || isRefreshing) ? 'animate-spin text-primary' : ''}`} />
+            </button>
+            {lastRefreshed && (
+              <span className="text-[11px] text-muted-foreground hidden sm:inline" title="Last synced time">
+                Synced {lastRefreshed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            )}
           </div>
-        )}
+
+          {/* Quotation Switcher */}
+          {quotationsList.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-muted-foreground">Select Quotation:</span>
+              <select
+                value={activeQuotationId}
+                onChange={(e) => {
+                  const newId = e.target.value;
+                  setActiveQuotationId(newId);
+                  navigate(`/sales/negotiation/${newId}`);
+                }}
+                className="rounded-lg border border-border/60 bg-card px-3 py-1.5 text-xs font-semibold text-foreground focus:border-primary focus:outline-none"
+              >
+                {quotationsList.map((q) => (
+                  <option key={q.id} value={q.id} className="bg-card text-foreground">
+                    {(q as any).quotationNumber || (q as any).quotation_number || q.id.slice(0, 8)} - {(q as any).customer?.name || 'Customer'} ({q.status})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Main Grid: Chat Thread on Left, Quotation & Counter-Offers on Right */}
@@ -399,6 +481,12 @@ export default function SalesNegotiation() {
               <span className="text-sm font-bold text-foreground">
                 Quotation: {quoteNumber} ({customerName})
               </span>
+              {isRefreshing && (
+                <span className="flex items-center gap-1 text-[10px] text-muted-foreground bg-primary/10 px-1.5 py-0.5 rounded border border-primary/20 animate-pulse">
+                  <RefreshCw className="h-2.5 w-2.5 animate-spin text-primary" />
+                  Syncing
+                </span>
+              )}
             </div>
             <span className="rounded-full bg-muted border border-border/50 px-2.5 py-0.5 text-xs font-bold text-foreground">
               {currentQuotation?.status || 'ACTIVE'}

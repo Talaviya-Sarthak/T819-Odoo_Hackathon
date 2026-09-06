@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getCurrentUser, refreshToken } from '../services/auth.api';
+import { queryCache } from '../services/query-cache';
 import type { User, AuthState, PortalInfo, NavItem } from '../types';
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -62,6 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   function logout() {
+    queryCache.clear();
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     setUser(null);

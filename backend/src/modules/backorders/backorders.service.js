@@ -4,21 +4,44 @@ const prisma = require('../../database/prisma');
 const { AppError } = require('../../utils/errors');
 const { logAudit } = require('../../services/audit.service');
 
-exports.list = async ({ status, salesOrderId } = {}) => {
+const { parsePagination, paginateResult } = require('../../utils/pagination');
+
+exports.list = async (query = {}) => {
+  const { status, salesOrderId, search } = query;
+  const { page, limit, skip, take } = parsePagination(query, { defaultLimit: 10, maxLimit: 100 });
+
   const where = {};
   if (status) where.status = status;
   if (salesOrderId) where.salesOrderId = salesOrderId;
 
-  return prisma.backorder.findMany({
-    where,
-    include: {
-      product: { select: { id: true, name: true, sku: true, costPrice: true, basePrice: true } },
-      salesOrder: { select: { id: true, orderNumber: true, status: true, customer: true } },
-      fulfillmentOrder: { select: { id: true, orderNumber: true, warehouse: true } },
-      salesOrderLine: true,
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+  if (search) {
+    const trimmed = String(search).trim();
+    if (trimmed) {
+      where.OR = [
+        { product: { name: { contains: trimmed, mode: 'insensitive' } } },
+        { product: { sku: { contains: trimmed, mode: 'insensitive' } } },
+        { salesOrder: { orderNumber: { contains: trimmed, mode: 'insensitive' } } },
+      ];
+    }
+  }
+
+  const [total, items] = await Promise.all([
+    prisma.backorder.count({ where }),
+    prisma.backorder.findMany({
+      where,
+      include: {
+        product: { select: { id: true, name: true, sku: true, costPrice: true, basePrice: true } },
+        salesOrder: { select: { id: true, orderNumber: true, status: true, customer: true } },
+        fulfillmentOrder: { select: { id: true, orderNumber: true, warehouse: true } },
+        salesOrderLine: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
+      skip,
+    }),
+  ]);
+
+  return paginateResult(items, total, page, limit);
 };
 
 exports.getById = async (id) => {

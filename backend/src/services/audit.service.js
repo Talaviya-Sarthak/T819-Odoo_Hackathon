@@ -44,26 +44,35 @@ async function logAudit({
   }
 }
 
+const { parsePagination, paginateResult } = require('../utils/pagination');
+
 /**
  * Lists audit logs with optional filtering.
  */
-async function listAuditLogs({ entityType, entityId, userId, limit = 50, offset = 0 } = {}) {
+async function listAuditLogs(query = {}) {
+  const { entityType, entityId, userId } = query;
+  const { page, limit, skip, take } = parsePagination(query, { defaultLimit: 50, maxLimit: 100 });
   const where = {};
   if (entityType) where.entityType = entityType;
   if (entityId) where.entityId = entityId;
   if (userId) where.userId = userId;
 
-  return prisma.auditLog.findMany({
-    where,
-    include: {
-      user: {
-        select: { id: true, name: true, email: true, role: true },
+  const [total, items] = await Promise.all([
+    prisma.auditLog.count({ where }),
+    prisma.auditLog.findMany({
+      where,
+      include: {
+        user: {
+          select: { id: true, name: true, email: true, role: true },
+        },
       },
-    },
-    orderBy: { createdAt: 'desc' },
-    take: Number(limit),
-    skip: Number(offset),
-  });
+      orderBy: { createdAt: 'desc' },
+      take,
+      skip,
+    }),
+  ]);
+
+  return paginateResult(items, total, page, limit);
 }
 
 module.exports = {

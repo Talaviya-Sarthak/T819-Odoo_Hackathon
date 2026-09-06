@@ -4,18 +4,22 @@ const { AppError } = require('../../utils/errors');
 const { logAudit } = require('../../services/audit.service');
 const prisma = require('../../database/prisma');
 
+const { parsePagination, paginateResult } = require('../../utils/pagination');
+
 const ROLE_STEP_MAP = {
   1: 'SALES_MANAGER',
   2: 'FINANCE',
   3: 'ADMIN',
 };
 
-exports.list = async ({ user, status, quotationId }) => {
+exports.list = async (query = {}) => {
+  const { user, status, quotationId, search } = query;
   // Customers cannot view internal approval queue
   if (user && user.role === 'CUSTOMER') {
     throw new AppError('Access denied. Customers cannot access approval queues.', 403);
   }
 
+  const { page, limit, skip, take } = parsePagination(query, { defaultLimit: 10, maxLimit: 100 });
   const where = {};
   if (status) where.status = status;
   if (quotationId) where.quotationId = quotationId;
@@ -33,30 +37,54 @@ exports.list = async ({ user, status, quotationId }) => {
     }
   }
 
-  return prisma.approvalRequest.findMany({
-    where,
-    include: {
-      quotation: {
-        include: {
-          customer: { select: { id: true, name: true, company: true, tier: true } },
-          salesRep: { select: { id: true, name: true, email: true } },
-          lines: {
-            include: {
-              product: { select: { id: true, name: true, sku: true, category: true } },
+  if (search) {
+    const trimmed = String(search).trim();
+    if (trimmed) {
+      const searchFilter = [
+        { quotation: { quotationNumber: { contains: trimmed, mode: 'insensitive' } } },
+        { quotation: { customer: { name: { contains: trimmed, mode: 'insensitive' } } } },
+        { reason: { contains: trimmed, mode: 'insensitive' } },
+      ];
+      if (where.OR) {
+        where.AND = [{ OR: where.OR }, { OR: searchFilter }];
+        delete where.OR;
+      } else {
+        where.OR = searchFilter;
+      }
+    }
+  }
+
+  const [total, items] = await Promise.all([
+    prisma.approvalRequest.count({ where }),
+    prisma.approvalRequest.findMany({
+      where,
+      include: {
+        quotation: {
+          include: {
+            customer: { select: { id: true, name: true, company: true, tier: true } },
+            salesRep: { select: { id: true, name: true, email: true } },
+            lines: {
+              include: {
+                product: { select: { id: true, name: true, sku: true, category: true } },
+              },
             },
           },
         },
-      },
-      approver: { select: { id: true, name: true, email: true, role: true } },
-      history: {
-        include: {
-          user: { select: { id: true, name: true, email: true, role: true } },
+        approver: { select: { id: true, name: true, email: true, role: true } },
+        history: {
+          include: {
+            user: { select: { id: true, name: true, email: true, role: true } },
+          },
+          orderBy: { createdAt: 'asc' },
         },
-        orderBy: { createdAt: 'asc' },
       },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+      orderBy: { createdAt: 'desc' },
+      take,
+      skip,
+    }),
+  ]);
+
+  return paginateResult(items, total, page, limit);
 };
 
 exports.getById = async (id, user = null) => {

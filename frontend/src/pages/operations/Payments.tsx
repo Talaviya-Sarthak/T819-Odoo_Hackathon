@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { paymentsApi, invoicesApi } from '../../api';
 import { useToast } from '../../components/Toast';
+import PaginationControls from '../../components/PaginationControls';
 
 interface PaymentItem {
   id: string;
@@ -22,6 +23,17 @@ export default function Payments() {
   const [payments, setPayments] = useState<PaymentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  });
 
   // Record Payment Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -35,14 +47,40 @@ export default function Payments() {
   const { toast } = useToast();
 
   useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
     loadPayments();
-  }, []);
+  }, [page, limit, debouncedSearch]);
 
   async function loadPayments() {
     try {
       setLoading(true);
-      const data = await paymentsApi.getAll();
-      setPayments(data);
+      const data = await paymentsApi.getAll({
+        search: debouncedSearch || undefined,
+        page,
+        limit,
+      });
+      const items = Array.isArray(data) ? data : [];
+      setPayments(items);
+      if ((data as any)?.pagination) {
+        setPagination((data as any).pagination);
+      } else {
+        const total = (data as any)?.total ?? items.length;
+        setPagination({
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit) || 1,
+          hasNextPage: page * limit < total,
+          hasPreviousPage: page > 1,
+        });
+      }
     } catch {
       toast('Failed to load payments history', 'error');
     } finally {
@@ -248,6 +286,15 @@ export default function Payments() {
           </div>
         )}
       </div>
+
+      <PaginationControls
+        page={pagination.page}
+        limit={pagination.limit}
+        total={pagination.total}
+        totalPages={pagination.totalPages}
+        onPageChange={(newPage) => setPage(newPage)}
+        onLimitChange={(newLimit) => { setLimit(newLimit); setPage(1); }}
+      />
 
       {/* Record Payment Modal */}
       {modalOpen && (

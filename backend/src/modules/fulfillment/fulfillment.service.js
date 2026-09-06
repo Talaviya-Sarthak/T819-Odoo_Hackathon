@@ -270,23 +270,46 @@ exports.fulfill = async (id, { lineIds } = {}, user = null) => {
   }, { maxWait: 15000, timeout: 60000 });
 };
 
-exports.list = async ({ status, salesOrderId, warehouseId } = {}) => {
+const { parsePagination, paginateResult } = require('../../utils/pagination');
+
+exports.list = async (query = {}) => {
+  const { status, salesOrderId, warehouseId, search } = query;
+  const { page, limit, skip, take } = parsePagination(query, { defaultLimit: 10, maxLimit: 100 });
+
   const where = {};
   if (status) where.status = status;
   if (salesOrderId) where.salesOrderId = salesOrderId;
   if (warehouseId) where.warehouseId = warehouseId;
 
-  return prisma.fulfillmentOrder.findMany({
-    where,
-    include: {
-      warehouse: { select: { id: true, name: true, code: true, location: true } },
-      customer: { select: { id: true, name: true, company: true, email: true } },
-      salesOrder: { select: { id: true, orderNumber: true, status: true, totalAmount: true } },
-      lines: { include: { product: { select: { id: true, name: true, sku: true } } } },
-      backorders: true,
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+  if (search) {
+    const trimmed = String(search).trim();
+    if (trimmed) {
+      where.OR = [
+        { orderNumber: { contains: trimmed, mode: 'insensitive' } },
+        { customer: { name: { contains: trimmed, mode: 'insensitive' } } },
+        { warehouse: { name: { contains: trimmed, mode: 'insensitive' } } },
+      ];
+    }
+  }
+
+  const [total, items] = await Promise.all([
+    prisma.fulfillmentOrder.count({ where }),
+    prisma.fulfillmentOrder.findMany({
+      where,
+      include: {
+        warehouse: { select: { id: true, name: true, code: true, location: true } },
+        customer: { select: { id: true, name: true, company: true, email: true } },
+        salesOrder: { select: { id: true, orderNumber: true, status: true, totalAmount: true } },
+        lines: { include: { product: { select: { id: true, name: true, sku: true } } } },
+        backorders: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
+      skip,
+    }),
+  ]);
+
+  return paginateResult(items, total, page, limit);
 };
 
 exports.getById = async (id) => {

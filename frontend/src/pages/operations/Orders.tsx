@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ordersApi, quotationsApi, invoicesApi } from '../../api';
 import { useToast } from '../../components/Toast';
 import { TableSkeleton } from '../../components/ui/skeleton';
+import PaginationControls from '../../components/PaginationControls';
 
 interface OrderLine {
   id: string;
@@ -40,6 +41,17 @@ export default function OperationsOrders() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  });
 
   // Order Details Modal state
   const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null);
@@ -52,14 +64,30 @@ export default function OperationsOrders() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
     loadOrders();
+  }, [statusFilter, page, limit, debouncedSearch]);
+
+  useEffect(() => {
     loadConfirmedQuotes();
-  }, [statusFilter]);
+  }, []);
 
   async function loadOrders() {
     try {
       setLoading(true);
-      const data = await ordersApi.getAll({ status: statusFilter || undefined });
+      const data = await ordersApi.getAll({
+        status: statusFilter || undefined,
+        search: debouncedSearch || undefined,
+        page,
+        limit,
+      });
       const list = Array.isArray(data)
         ? data
         : Array.isArray((data as any)?.orders)
@@ -68,6 +96,19 @@ export default function OperationsOrders() {
         ? (data as any).salesOrders
         : [];
       setOrders(list);
+      if ((data as any)?.pagination) {
+        setPagination((data as any).pagination);
+      } else {
+        const total = (data as any)?.total ?? list.length;
+        setPagination({
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit) || 1,
+          hasNextPage: page * limit < total,
+          hasPreviousPage: page > 1,
+        });
+      }
     } catch {
       toast('Failed to load sales orders', 'error');
       setOrders([]);
@@ -349,6 +390,15 @@ export default function OperationsOrders() {
           </div>
         )}
       </div>
+
+      <PaginationControls
+        page={pagination.page}
+        limit={pagination.limit}
+        total={pagination.total}
+        totalPages={pagination.totalPages}
+        onPageChange={(newPage) => setPage(newPage)}
+        onLimitChange={(newLimit) => { setLimit(newLimit); setPage(1); }}
+      />
 
       {/* Order Details Modal */}
       {detailsModalOpen && selectedOrder && (

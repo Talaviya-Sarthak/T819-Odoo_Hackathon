@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiPut, apiDelete, apiUpload, apiDownload } from '../services/api';
+import type { QueryCacheOptions } from '../services/query-cache';
 import type { Quotation, Product, Customer } from '../types';
 
 export interface DiscountCheckResult {
@@ -93,19 +94,42 @@ export interface NegotiationThread {
   }>;
 }
 
+function attachPagination<T extends any[]>(items: T, res: any): T {
+  if (res && (res.pagination || res.total !== undefined)) {
+    const pag = res.pagination || {
+      total: res.total,
+      page: res.page || 1,
+      limit: res.limit || 20,
+      totalPages: res.totalPages || Math.ceil((res.total || 0) / (res.limit || 20)),
+    };
+    (items as any).pagination = pag;
+    (items as any).total = res.total ?? pag.total;
+    (items as any).page = res.page ?? pag.page;
+    (items as any).limit = res.limit ?? pag.limit;
+    (items as any).totalPages = res.totalPages ?? pag.totalPages;
+    (items as any).hasNextPage = pag.hasNextPage ?? (pag.page < pag.totalPages);
+    (items as any).hasPreviousPage = pag.hasPreviousPage ?? (pag.page > 1);
+  }
+  return items;
+}
+
 // ─── Quotations API ─────────────────────────────────────────────────────────
 export const quotationsApi = {
-  getAll: async (params: { status?: string; customerId?: string; search?: string } = {}) => {
+  getAll: async (params: { status?: string; customerId?: string; search?: string; page?: number; limit?: number } = {}) => {
     const query = new URLSearchParams();
     if (params.status) query.append('status', params.status);
     if (params.customerId) query.append('customerId', params.customerId);
+    if (params.search) query.append('search', params.search);
+    if (params.page) query.append('page', String(params.page));
+    if (params.limit) query.append('limit', String(params.limit));
     const qs = query.toString() ? `?${query.toString()}` : '';
     const res = await apiGet<any>(`/api/quotations${qs}`);
-    return res.quotations || res.data || [];
+    const items = res.quotations || res.data || [];
+    return attachPagination(items, res);
   },
 
-  getById: async (id: string) => {
-    const res = await apiGet<any>(`/api/quotations/${id}`);
+  getById: async (id: string, options?: QueryCacheOptions) => {
+    const res = await apiGet<any>(`/api/quotations/${id}`, options);
     return res.quotation || res.data;
   },
 
@@ -148,9 +172,28 @@ export const quotationsApi = {
 
 // ─── Approvals API ──────────────────────────────────────────────────────────
 export const approvalsApi = {
-  getPending: async () => {
-    const res = await apiGet<any>('/api/approvals/pending');
-    return res.approvals || res.data || [];
+  getPending: async (params: { page?: number; limit?: number; search?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.page) query.append('page', String(params.page));
+    if (params.limit) query.append('limit', String(params.limit));
+    if (params.search) query.append('search', params.search);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await apiGet<any>(`/api/approvals/pending${qs}`);
+    const items = res.approvals || res.data || [];
+    return attachPagination(items, res);
+  },
+
+  getAll: async (params: { status?: string; quotationId?: string; search?: string; page?: number; limit?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (params.status) query.append('status', params.status);
+    if (params.quotationId) query.append('quotationId', params.quotationId);
+    if (params.search) query.append('search', params.search);
+    if (params.page) query.append('page', String(params.page));
+    if (params.limit) query.append('limit', String(params.limit));
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await apiGet<any>(`/api/approvals${qs}`);
+    const items = res.approvals || res.approvalRequests || res.data || [];
+    return attachPagination(items, res);
   },
 
   getHistory: async (id: string) => {
@@ -176,9 +219,17 @@ export const approvalsApi = {
 
 // ─── Products & Customers API ───────────────────────────────────────────────
 export const productsApi = {
-  getAll: async () => {
-    const res = await apiGet<any>('/api/products');
-    return res.products || res.data || [];
+  getAll: async (params: { categoryId?: string; search?: string; active?: boolean; page?: number; limit?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (params.categoryId) query.append('categoryId', params.categoryId);
+    if (params.search) query.append('search', params.search);
+    if (params.active !== undefined) query.append('active', String(params.active));
+    if (params.page) query.append('page', String(params.page));
+    if (params.limit) query.append('limit', String(params.limit));
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await apiGet<any>(`/api/products${qs}`);
+    const items = res.products || res.data || [];
+    return attachPagination(items, res);
   },
 
   getCategories: async () => {
@@ -188,9 +239,21 @@ export const productsApi = {
 };
 
 export const customersApi = {
-  getAll: async () => {
-    const res = await apiGet<any>('/api/customers');
-    return res.customers || res.data || [];
+  getAll: async (params: { tierId?: string; search?: string; myCustomers?: boolean; page?: number; limit?: number; all?: boolean } = {}) => {
+    const query = new URLSearchParams();
+    if (params.tierId) query.append('tierId', params.tierId);
+    if (params.search) query.append('search', params.search);
+    if (params.myCustomers) query.append('myCustomers', 'true');
+    if (params.all || (!params.page && !params.limit)) {
+      query.append('all', 'true');
+    } else {
+      if (params.page) query.append('page', String(params.page));
+      if (params.limit) query.append('limit', String(params.limit));
+    }
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await apiGet<any>(`/api/customers${qs}`);
+    const items = res.customers || res.data || [];
+    return attachPagination(items, res);
   },
 
   getById: async (id: string) => {
@@ -201,8 +264,8 @@ export const customersApi = {
 
 // ─── Negotiation API ────────────────────────────────────────────────────────
 export const negotiationsApi = {
-  getMessages: async (quotationId: string) => {
-    const res = await apiGet<any>(`/api/quotations/${quotationId}/negotiation`);
+  getMessages: async (quotationId: string, options?: QueryCacheOptions) => {
+    const res = await apiGet<any>(`/api/quotations/${quotationId}/negotiation`, options);
     return res.negotiation || res.data || res;
   },
 
@@ -260,13 +323,17 @@ export const analyticsApi = {
 
 // ─── Sales Orders API ───────────────────────────────────────────────────────
 export const ordersApi = {
-  getAll: async (params: { status?: string; customerId?: string; search?: string } = {}) => {
+  getAll: async (params: { status?: string; customerId?: string; search?: string; page?: number; limit?: number } = {}) => {
     const query = new URLSearchParams();
     if (params.status) query.append('status', params.status);
     if (params.customerId) query.append('customerId', params.customerId);
+    if (params.search) query.append('search', params.search);
+    if (params.page) query.append('page', String(params.page));
+    if (params.limit) query.append('limit', String(params.limit));
     const qs = query.toString() ? `?${query.toString()}` : '';
     const res = await apiGet<any>(`/api/orders${qs}`);
-    return res.orders || res.data || [];
+    const items = res.orders || res.salesOrders || res.data || [];
+    return attachPagination(items, res);
   },
 
   getById: async (id: string) => {
@@ -320,13 +387,17 @@ export const warehousesApi = {
 
 // ─── Inventory API ──────────────────────────────────────────────────────────
 export const inventoryApi = {
-  getAll: async (params: { warehouseId?: string; lowStock?: boolean } = {}) => {
+  getAll: async (params: { warehouseId?: string; lowStock?: boolean; search?: string; page?: number; limit?: number } = {}) => {
     const query = new URLSearchParams();
     if (params.warehouseId) query.append('warehouseId', params.warehouseId);
     if (params.lowStock) query.append('lowStock', 'true');
+    if (params.search) query.append('search', params.search);
+    if (params.page) query.append('page', String(params.page));
+    if (params.limit) query.append('limit', String(params.limit));
     const qs = query.toString() ? `?${query.toString()}` : '';
     const res = await apiGet<any>(`/api/inventory${qs}`);
-    return res.stocks || res.inventory || res.data || [];
+    const items = res.stocks || res.inventory || res.data || [];
+    return attachPagination(items, res);
   },
 
   getById: async (id: string) => {
@@ -357,14 +428,18 @@ export const inventoryApi = {
 
 // ─── Fulfillment Orders API ─────────────────────────────────────────────────
 export const fulfillmentApi = {
-  getAll: async (params: { status?: string; warehouseId?: string; orderId?: string } = {}) => {
+  getAll: async (params: { status?: string; warehouseId?: string; orderId?: string; search?: string; page?: number; limit?: number } = {}) => {
     const query = new URLSearchParams();
     if (params.status) query.append('status', params.status);
     if (params.warehouseId) query.append('warehouseId', params.warehouseId);
     if (params.orderId) query.append('orderId', params.orderId);
+    if (params.search) query.append('search', params.search);
+    if (params.page) query.append('page', String(params.page));
+    if (params.limit) query.append('limit', String(params.limit));
     const qs = query.toString() ? `?${query.toString()}` : '';
     const res = await apiGet<any>(`/api/fulfillments${qs}`);
-    return res.fulfillments || res.data || [];
+    const items = res.fulfillments || res.fulfillmentOrders || res.data || [];
+    return attachPagination(items, res);
   },
 
   getById: async (id: string) => {
@@ -390,13 +465,17 @@ export const fulfillmentApi = {
 
 // ─── Backorders API ─────────────────────────────────────────────────────────
 export const backordersApi = {
-  getAll: async (params: { status?: string; productId?: string } = {}) => {
+  getAll: async (params: { status?: string; productId?: string; search?: string; page?: number; limit?: number } = {}) => {
     const query = new URLSearchParams();
     if (params.status) query.append('status', params.status);
     if (params.productId) query.append('productId', params.productId);
+    if (params.search) query.append('search', params.search);
+    if (params.page) query.append('page', String(params.page));
+    if (params.limit) query.append('limit', String(params.limit));
     const qs = query.toString() ? `?${query.toString()}` : '';
     const res = await apiGet<any>(`/api/backorders${qs}`);
-    return res.backorders || res.data || [];
+    const items = res.backorders || res.data || [];
+    return attachPagination(items, res);
   },
 
   getById: async (id: string) => {
@@ -412,13 +491,17 @@ export const backordersApi = {
 
 // ─── Invoices API ───────────────────────────────────────────────────────────
 export const invoicesApi = {
-  getAll: async (params: { status?: string; customerId?: string } = {}) => {
+  getAll: async (params: { status?: string; customerId?: string; search?: string; page?: number; limit?: number } = {}) => {
     const query = new URLSearchParams();
     if (params.status) query.append('status', params.status);
     if (params.customerId) query.append('customerId', params.customerId);
+    if (params.search) query.append('search', params.search);
+    if (params.page) query.append('page', String(params.page));
+    if (params.limit) query.append('limit', String(params.limit));
     const qs = query.toString() ? `?${query.toString()}` : '';
     const res = await apiGet<any>(`/api/invoices${qs}`);
-    return res.invoices || res.data || [];
+    const items = res.invoices || res.data || [];
+    return attachPagination(items, res);
   },
 
   getById: async (id: string) => {
@@ -459,12 +542,16 @@ export const invoicesApi = {
 
 // ─── Payments API ───────────────────────────────────────────────────────────
 export const paymentsApi = {
-  getAll: async (params: { invoiceId?: string } = {}) => {
+  getAll: async (params: { invoiceId?: string; search?: string; page?: number; limit?: number } = {}) => {
     const query = new URLSearchParams();
     if (params.invoiceId) query.append('invoiceId', params.invoiceId);
+    if (params.search) query.append('search', params.search);
+    if (params.page) query.append('page', String(params.page));
+    if (params.limit) query.append('limit', String(params.limit));
     const qs = query.toString() ? `?${query.toString()}` : '';
     const res = await apiGet<any>(`/api/payments${qs}`);
-    return res.payments || res.data || [];
+    const items = res.payments || res.data || [];
+    return attachPagination(items, res);
   },
 
   getById: async (id: string) => {
@@ -480,13 +567,17 @@ export const paymentsApi = {
 
 // ─── Subscriptions & Plans API ──────────────────────────────────────────────
 export const subscriptionsApi = {
-  getAll: async (params: { status?: string; customerId?: string } = {}) => {
+  getAll: async (params: { status?: string; customerId?: string; search?: string; page?: number; limit?: number } = {}) => {
     const query = new URLSearchParams();
     if (params.status) query.append('status', params.status);
     if (params.customerId) query.append('customerId', params.customerId);
+    if (params.search) query.append('search', params.search);
+    if (params.page) query.append('page', String(params.page));
+    if (params.limit) query.append('limit', String(params.limit));
     const qs = query.toString() ? `?${query.toString()}` : '';
     const res = await apiGet<any>(`/api/subscriptions${qs}`);
-    return res.subscriptions || res.data || [];
+    const items = res.subscriptions || res.data || [];
+    return attachPagination(items, res);
   },
 
   getById: async (id: string) => {
@@ -685,9 +776,14 @@ export const knowledgeBaseApi = {
 
 // ─── Discount Rules API ─────────────────────────────────────────────────────
 export const discountRulesApi = {
-  getAll: async () => {
-    const res = await apiGet<any>('/api/discount-rules');
-    return res.rules || res.data || [];
+  getAll: async (params: { page?: number; limit?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (params.page) query.append('page', String(params.page));
+    if (params.limit) query.append('limit', String(params.limit));
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await apiGet<any>(`/api/discount-rules${qs}`);
+    const items = res.rules || res.data || [];
+    return attachPagination(items, res);
   },
   create: async (data: any) => {
     const res = await apiPost<any>('/api/discount-rules', data);
