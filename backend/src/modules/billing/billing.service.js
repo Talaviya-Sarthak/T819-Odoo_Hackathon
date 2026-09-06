@@ -3,6 +3,37 @@
 const prisma = require('../../database/prisma');
 const { AppError } = require('../../utils/errors');
 const { logAudit } = require('../../services/audit.service');
+const invoicePdfService = require('./invoice-pdf.service');
+const invoiceReportService = require('./invoice-report.service');
+
+// Generate unique sequential invoice number (e.g. INV-00001) without collisions
+async function getNextInvoiceNumber(tx = prisma) {
+  const lastInvoice = await tx.invoice.findFirst({
+    orderBy: { invoiceNumber: 'desc' },
+    select: { invoiceNumber: true },
+  });
+
+  let nextNum = 1;
+  if (lastInvoice && lastInvoice.invoiceNumber) {
+    const match = lastInvoice.invoiceNumber.match(/INV-(\d+)/);
+    if (match) {
+      nextNum = parseInt(match[1], 10) + 1;
+    }
+  } else {
+    const count = await tx.invoice.count();
+    nextNum = count + 1;
+  }
+
+  let candidate = `INV-${String(nextNum).padStart(5, '0')}`;
+  let exists = await tx.invoice.findUnique({ where: { invoiceNumber: candidate } });
+  while (exists) {
+    nextNum++;
+    candidate = `INV-${String(nextNum).padStart(5, '0')}`;
+    exists = await tx.invoice.findUnique({ where: { invoiceNumber: candidate } });
+  }
+
+  return candidate;
+}
 
 // ─── INVOICE MANAGEMENT ─────────────────────────────────────────────
 
@@ -26,13 +57,11 @@ exports.createInvoiceFromOrder = async (salesOrderId, user = null) => {
     });
   }
 
-  const count = await prisma.invoice.count();
-  const invoiceNumber = `INV-${String(count + 1).padStart(5, '0')}`;
-
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 30); // Net 30 terms
 
   const invoice = await prisma.$transaction(async (tx) => {
+    const invoiceNumber = await getNextInvoiceNumber(tx);
     return tx.invoice.create({
       data: {
         invoiceNumber,
@@ -73,7 +102,7 @@ exports.createInvoiceFromOrder = async (salesOrderId, user = null) => {
     action: 'INVOICE_GENERATED',
     entityType: 'INVOICE',
     entityId: invoice.id,
-    newValues: { invoiceNumber, totalAmount: invoice.totalAmount.toString() },
+    newValues: { invoiceNumber: invoice.invoiceNumber, totalAmount: invoice.totalAmount.toString() },
   });
 
   return invoice;
@@ -96,12 +125,10 @@ exports.createInvoiceFromSchedule = async (scheduleId, user = null) => {
   if (!schedule) throw new AppError('Billing schedule not found', 404);
   if (schedule.invoice) return schedule.invoice;
 
-  const count = await prisma.invoice.count();
-  const invoiceNumber = `INV-${String(count + 1).padStart(5, '0')}`;
-
   const sub = schedule.subscription;
 
   const invoice = await prisma.$transaction(async (tx) => {
+    const invoiceNumber = await getNextInvoiceNumber(tx);
     const inv = await tx.invoice.create({
       data: {
         invoiceNumber,
@@ -144,7 +171,7 @@ exports.createInvoiceFromSchedule = async (scheduleId, user = null) => {
     action: 'INVOICE_GENERATED_FROM_SCHEDULE',
     entityType: 'INVOICE',
     entityId: invoice.id,
-    newValues: { invoiceNumber, scheduleId },
+    newValues: { invoiceNumber: invoice.invoiceNumber, scheduleId },
   });
 
   return invoice;
@@ -201,7 +228,7 @@ exports.getInvoiceById = async (id, user = null) => {
   if (user && user.role === 'CUSTOMER') {
     const userCustId = user.customerId || user.customer_id;
     const isOwner = userCustId === invoice.customerId ||
-      (invoice.customer?.email && invoice.customer.email.toLowerCase() === user.email.toLowerCase());
+      (invoice.customer?.email && user.email && invoice.customer.email.toLowerCase() === user.email.toLowerCase());
     if (!isOwner) throw new AppError('Access denied to invoice', 403);
   }
 
@@ -470,3 +497,21 @@ exports.cancelSubscription = async (id, user = null) => {
     data: { status: 'CANCELLED' },
   });
 };
+
+// ─── PDF & REPORT GENERATION ────────────────────────────────────────
+
+exports.generateInvoicePdf = async (invoiceId, user = null) => {
+  const invoice = await exports.getInvoiceById(invoiceId, user);
+  return invoicePdfService.generateInvoicePdf(invoice);
+};
+
+exports.exportInvoicesCsv = async ({ user = null, status, customerId } = {}) => {
+  const invoices = await exports.listInvoices({ user, status, customerId, limit: 5000, offset: 0 });
+  return invoiceReportService.generateInvoicesCsv(invoices);
+};
+
+exports.exportInvoicesPdf = async ({ user = null, status, customerId } = {}) => {
+  const invoices = await exports.listInvoices({ user, status, customerId, limit: 5000, offset: 0 });
+  return invoiceReportService.generateInvoicesReportPdf(invoices);
+};
+

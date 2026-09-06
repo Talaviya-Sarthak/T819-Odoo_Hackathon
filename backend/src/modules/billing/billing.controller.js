@@ -60,6 +60,42 @@ exports.getInvoiceById = async (req, res, next) => {
   }
 };
 
+exports.downloadInvoicePdf = async (req, res, next) => {
+  try {
+    const invoice = await billingService.getInvoiceById(req.params.id, req.user);
+    const pdfBuffer = await billingService.generateInvoicePdf(req.params.id, req.user);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${invoice.invoiceNumber || 'Invoice'}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.send(pdfBuffer);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.exportInvoicesCsv = async (req, res, next) => {
+  try {
+    const csvData = await billingService.exportInvoicesCsv({ ...req.query, user: req.user });
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="DealFlow360-Invoices-${new Date().toISOString().split('T')[0]}.csv"`);
+    res.send(csvData);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.exportInvoicesPdf = async (req, res, next) => {
+  try {
+    const pdfBuffer = await billingService.exportInvoicesPdf({ ...req.query, user: req.user });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="DealFlow360-Invoices-Report-${new Date().toISOString().split('T')[0]}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.send(pdfBuffer);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ─── PAYMENTS ───────────────────────────────────────────────────────
 
 exports.recordPayment = async (req, res, next) => {

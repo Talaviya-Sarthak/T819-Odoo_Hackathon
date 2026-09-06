@@ -10,7 +10,15 @@ const READ_ROLES = ['ADMIN', 'MANAGER_ADMIN', 'OPS_FINANCE', 'OPERATIONS', 'FINA
 const WRITE_ROLES = ['ADMIN', 'MANAGER_ADMIN', 'OPS_FINANCE', 'FINANCE', 'OPERATIONS'];
 
 // Invoices
+router.get('/invoices/export/csv', authenticate, billingController.exportInvoicesCsv);
+router.get('/invoices/export/pdf', authenticate, billingController.exportInvoicesPdf);
+router.get('/invoices/export', authenticate, billingController.exportInvoicesCsv);
+router.get('/reports/invoices/csv', authenticate, billingController.exportInvoicesCsv);
+router.get('/reports/invoices/pdf', authenticate, billingController.exportInvoicesPdf);
+router.get('/reports/invoices/export', authenticate, billingController.exportInvoicesCsv);
 router.get('/invoices', authenticate, billingController.listInvoices);
+router.get('/invoices/:id/pdf', authenticate, billingController.downloadInvoicePdf);
+router.get('/invoices/:id/download', authenticate, billingController.downloadInvoicePdf);
 router.get('/invoices/:id', authenticate, billingController.getInvoiceById);
 router.post(
   '/invoices',

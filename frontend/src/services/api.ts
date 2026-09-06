@@ -143,3 +143,44 @@ export async function apiUpload<T>(endpoint: string, formData: FormData): Promis
     body: formData,
   });
 }
+
+export async function apiDownload(endpoint: string, fallbackFilename = 'download'): Promise<void> {
+  const token = localStorage.getItem('accessToken');
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    method: 'GET',
+    headers,
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    let errMessage = 'Download failed';
+    try {
+      const errJson = await response.json();
+      errMessage = errJson.message || errJson.error || errMessage;
+    } catch {}
+    throw new Error(errMessage);
+  }
+
+  const disposition = response.headers.get('Content-Disposition');
+  let filename = fallbackFilename;
+  if (disposition && disposition.includes('filename=')) {
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    if (match && match[1]) filename = match[1];
+  }
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+

@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut, apiDelete, apiUpload } from '../services/api';
+import { apiGet, apiPost, apiPut, apiDelete, apiUpload, apiDownload } from '../services/api';
 import type { Quotation, Product, Customer } from '../types';
 
 export interface DiscountCheckResult {
@@ -434,6 +434,26 @@ export const invoicesApi = {
   createFromSchedule: async (scheduleId: string) => {
     const res = await apiPost<any>(`/api/invoices/from-schedule/${scheduleId}`);
     return res.invoice || res.data;
+  },
+
+  downloadPdf: async (id: string, invoiceNumber = 'Invoice') => {
+    await apiDownload(`/api/invoices/${id}/pdf`, `${invoiceNumber}.pdf`);
+  },
+
+  exportCsv: async (params: { status?: string; customerId?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.status) query.append('status', params.status);
+    if (params.customerId) query.append('customerId', params.customerId);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    await apiDownload(`/api/invoices/export/csv${qs}`, `DealFlow360-Invoices-${new Date().toISOString().split('T')[0]}.csv`);
+  },
+
+  exportPdf: async (params: { status?: string; customerId?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.status) query.append('status', params.status);
+    if (params.customerId) query.append('customerId', params.customerId);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    await apiDownload(`/api/invoices/export/pdf${qs}`, `DealFlow360-Invoices-Report-${new Date().toISOString().split('T')[0]}.pdf`);
   },
 };
 
