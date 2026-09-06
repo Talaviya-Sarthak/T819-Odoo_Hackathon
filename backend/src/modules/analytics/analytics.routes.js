@@ -7,7 +7,7 @@ const { authenticate } = require('../../middlewares/auth.middleware');
 const { requireRole } = require('../../middlewares/role.middleware');
 
 router.use(authenticate);
-router.use(requireRole(['OPS_FINANCE', 'ADMIN', 'MANAGER_ADMIN', 'SALES_MANAGER']));
+router.use(requireRole(['OPS_FINANCE', 'OPERATIONS', 'FINANCE', 'ADMIN', 'MANAGER_ADMIN', 'SALES_MANAGER', 'MANAGEMENT']));
 
 router.get('/operations/kpis', analyticsController.getOperationsKPIs);
 router.get('/operations', analyticsController.getOperationsAnalytics);

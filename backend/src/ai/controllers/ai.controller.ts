@@ -13,7 +13,7 @@ import type { ChatResponse } from '../types';
  */
 export const chat = asyncHandler(async (req: Request, res: Response) => {
   const { message, sessionId } = req.body;
-  const userId = req.auth?.userId || 'guest-student-user';
+  const userId = req.body?.userId || (req as any).user?.id || req.auth?.userId || 'guest-user';
 
   // Apply Anonymization & PII Redaction to student input
   const anonymization = anonymizeStudentData(message || '');

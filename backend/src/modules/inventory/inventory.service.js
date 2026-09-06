@@ -21,23 +21,51 @@ exports.list = async ({ warehouseId, productId } = {}) => {
     ],
   });
 
-  return stocks.map((s) => ({
-    id: s.id,
-    warehouseId: s.warehouseId,
-    warehouseName: s.warehouse?.name,
-    warehouseCode: s.warehouse?.code,
-    productId: s.productId,
-    productName: s.product?.name,
-    sku: s.product?.sku,
-    quantityOnHand: s.quantity,
-    quantityReserved: s.reservedQty,
-    availableQuantity: Math.max(0, s.quantity - s.reservedQty),
-    reorderLevel: s.reorderLevel,
-    isLowStock: s.quantity <= s.reorderLevel,
-    unitCost: Number(s.product?.costPrice || 0),
-    inventoryValue: Number(s.product?.costPrice || 0) * s.quantity,
-    updatedAt: s.updatedAt,
-  }));
+  return stocks.map((s) => {
+    const qty = Number.isFinite(Number(s.quantity)) ? Number(s.quantity) : 0;
+    const reserved = Number.isFinite(Number(s.reservedQty)) ? Number(s.reservedQty) : 0;
+    const available = Math.max(0, qty - reserved);
+    const reorder = Number.isFinite(Number(s.reorderLevel)) ? Number(s.reorderLevel) : 0;
+    const unitCost = Number.isFinite(Number(s.product?.costPrice))
+      ? Number(s.product.costPrice)
+      : (Number.isFinite(Number(s.product?.basePrice)) ? Number(s.product.basePrice) : 0);
+    const inventoryVal = Number((qty * unitCost).toFixed(2));
+
+    return {
+      id: s.id,
+      warehouseId: s.warehouseId,
+      warehouseName: s.warehouse?.name || '',
+      warehouseCode: s.warehouse?.code || '',
+      warehouse: s.warehouse ? {
+        id: s.warehouse.id,
+        name: s.warehouse.name,
+        code: s.warehouse.code,
+        location: s.warehouse.location || '',
+        active: s.warehouse.active ?? true,
+      } : null,
+      productId: s.productId,
+      productName: s.product?.name || '',
+      sku: s.product?.sku || '',
+      product: s.product ? {
+        id: s.product.id,
+        name: s.product.name,
+        sku: s.product.sku,
+        unit: s.product.unit || 'unit',
+        basePrice: Number(s.product.basePrice || 0),
+        costPrice: Number(s.product.costPrice || 0),
+      } : null,
+      quantity: qty,
+      quantityOnHand: qty,
+      reservedQty: reserved,
+      quantityReserved: reserved,
+      availableQuantity: available,
+      reorderLevel: reorder,
+      isLowStock: qty <= reorder,
+      unitCost,
+      inventoryValue: inventoryVal,
+      updatedAt: s.updatedAt,
+    };
+  });
 };
 
 exports.getById = async (id) => {
@@ -51,12 +79,26 @@ exports.getById = async (id) => {
 
   if (!stock) throw new AppError('Stock item not found', 404);
 
+  const qty = Number.isFinite(Number(stock.quantity)) ? Number(stock.quantity) : 0;
+  const reserved = Number.isFinite(Number(stock.reservedQty)) ? Number(stock.reservedQty) : 0;
+  const unitCost = Number.isFinite(Number(stock.product?.costPrice))
+    ? Number(stock.product.costPrice)
+    : (Number.isFinite(Number(stock.product?.basePrice)) ? Number(stock.product.basePrice) : 0);
+
   return {
     ...stock,
-    quantityOnHand: stock.quantity,
-    quantityReserved: stock.reservedQty,
-    availableQuantity: Math.max(0, stock.quantity - stock.reservedQty),
-    inventoryValue: Number(stock.product?.costPrice || 0) * stock.quantity,
+    quantity: qty,
+    quantityOnHand: qty,
+    reservedQty: reserved,
+    quantityReserved: reserved,
+    availableQuantity: Math.max(0, qty - reserved),
+    unitCost,
+    inventoryValue: Number((qty * unitCost).toFixed(2)),
+    product: stock.product ? {
+      ...stock.product,
+      basePrice: Number(stock.product.basePrice || 0),
+      costPrice: Number(stock.product.costPrice || 0),
+    } : null,
   };
 };
 
@@ -120,11 +162,26 @@ exports.adjust = async (idOrPayload, payloadOrOptions = {}, user = null) => {
     newValues: { newQuantity: updated.quantity },
   });
 
+  const qty = Number.isFinite(Number(updated.quantity)) ? Number(updated.quantity) : 0;
+  const reserved = Number.isFinite(Number(updated.reservedQty)) ? Number(updated.reservedQty) : 0;
+  const unitCost = Number.isFinite(Number(updated.product?.costPrice))
+    ? Number(updated.product.costPrice)
+    : (Number.isFinite(Number(updated.product?.basePrice)) ? Number(updated.product.basePrice) : 0);
+
   return {
     ...updated,
-    quantityOnHand: updated.quantity,
-    quantityReserved: updated.reservedQty,
-    availableQuantity: Math.max(0, updated.quantity - updated.reservedQty),
+    quantity: qty,
+    quantityOnHand: qty,
+    reservedQty: reserved,
+    quantityReserved: reserved,
+    availableQuantity: Math.max(0, qty - reserved),
+    unitCost,
+    inventoryValue: Number((qty * unitCost).toFixed(2)),
+    product: updated.product ? {
+      ...updated.product,
+      basePrice: Number(updated.product.basePrice || 0),
+      costPrice: Number(updated.product.costPrice || 0),
+    } : null,
   };
 };
 

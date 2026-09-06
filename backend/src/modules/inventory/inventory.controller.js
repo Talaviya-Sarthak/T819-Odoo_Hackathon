@@ -24,7 +24,7 @@ exports.getById = async (req, res, next) => {
 exports.getByWarehouse = async (req, res, next) => {
   try {
     const result = await inventoryService.getByWarehouse(req.params.warehouseId);
-    sendSuccess(res, 200, 'Warehouse inventory fetched', { inventory: result });
+    sendSuccess(res, 200, 'Warehouse inventory fetched', { inventory: result, stocks: result });
   } catch (err) {
     next(err);
   }

@@ -4,10 +4,22 @@ import { useToast } from '../../components/Toast';
 
 interface StockItem {
   id: string;
-  quantity: number;
-  reservedQty: number;
-  reorderLevel: number;
-  product?: { name: string; sku: string; costPrice?: number | string };
+  quantity?: number;
+  quantityOnHand?: number;
+  reservedQty?: number;
+  quantityReserved?: number;
+  reorderLevel?: number;
+  unitCost?: number;
+  inventoryValue?: number;
+  product?: { name: string; sku: string; costPrice?: number | string; basePrice?: number | string };
+  productName?: string;
+  sku?: string;
+}
+
+function toSafeNumber(val: any, fallback: number = 0): number {
+  if (val === null || val === undefined || val === '') return fallback;
+  const num = Number(val);
+  return Number.isFinite(num) ? num : fallback;
 }
 
 interface WarehouseWithStocks {
@@ -116,10 +128,14 @@ export default function Warehouses() {
       ) : (
         <div className="space-y-6">
           {warehouses.map((wh) => {
-            const totalUnits = wh.stocks.reduce((sum, s) => sum + s.quantity, 0);
-            const totalReserved = wh.stocks.reduce((sum, s) => sum + s.reservedQty, 0);
+            const totalUnits = wh.stocks.reduce((sum, s) => sum + toSafeNumber(s.quantity ?? s.quantityOnHand), 0);
+            const totalReserved = wh.stocks.reduce((sum, s) => sum + toSafeNumber(s.reservedQty ?? s.quantityReserved), 0);
             const totalAvailable = Math.max(0, totalUnits - totalReserved);
-            const totalValuation = wh.stocks.reduce((sum, s) => sum + s.quantity * Number(s.product?.costPrice || 0), 0);
+            const totalValuation = wh.stocks.reduce((sum, s) => {
+              const qty = toSafeNumber(s.quantity ?? s.quantityOnHand);
+              const cost = toSafeNumber(s.product?.costPrice ?? s.unitCost ?? s.product?.basePrice);
+              return sum + qty * cost;
+            }, 0);
 
             return (
               <div
@@ -181,26 +197,29 @@ export default function Warehouses() {
                       </thead>
                       <tbody className="divide-y divide-slate-800/40">
                         {wh.stocks.map((stock) => {
-                          const avail = Math.max(0, stock.quantity - stock.reservedQty);
+                          const qty = toSafeNumber(stock.quantity ?? stock.quantityOnHand);
+                          const reserved = toSafeNumber(stock.reservedQty ?? stock.quantityReserved);
+                          const avail = Math.max(0, qty - reserved);
+                          const unitCost = toSafeNumber(stock.product?.costPrice ?? stock.unitCost ?? stock.product?.basePrice);
                           return (
                             <tr key={stock.id} className="hover:bg-slate-900/40">
                               <td className="px-6 py-3 font-semibold text-white">
-                                {stock.product?.name || 'Item'}
+                                {stock.product?.name || stock.productName || 'Item'}
                               </td>
                               <td className="px-6 py-3 font-mono text-indigo-400">
-                                {stock.product?.sku}
+                                {stock.product?.sku || stock.sku || 'N/A'}
                               </td>
                               <td className="px-6 py-3 text-center font-mono font-bold text-white">
-                                {stock.quantity}
+                                {qty}
                               </td>
                               <td className="px-6 py-3 text-center font-mono font-bold text-amber-400">
-                                {stock.reservedQty}
+                                {reserved}
                               </td>
                               <td className="px-6 py-3 text-center font-mono font-extrabold text-emerald-400">
                                 {avail}
                               </td>
                               <td className="px-6 py-3 text-right font-mono text-slate-400">
-                                ${Number(stock.product?.costPrice || 0).toFixed(2)}
+                                ${unitCost.toFixed(2)}
                               </td>
                             </tr>
                           );

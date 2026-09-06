@@ -14,6 +14,7 @@ dotenv.config({
   path: [
     path.resolve(process.cwd(), '.env'),
     path.resolve(process.cwd(), '..', '.env'),
+    path.resolve(__dirname, '../ai/.env'),
   ],
   override: false,
 });

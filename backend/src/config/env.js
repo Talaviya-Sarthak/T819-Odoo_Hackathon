@@ -39,6 +39,9 @@ const config = {
   SUPABASE_URL: process.env.SUPABASE_URL || '',
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || '',
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  SUPABASE_DB_URL: process.env.SUPABASE_DB_URL || '',
+
+  GROQ_API_KEY: process.env.GROQ_API_KEY || '',
 
   LOG_LEVEL: process.env.LOG_LEVEL || 'info'
 };

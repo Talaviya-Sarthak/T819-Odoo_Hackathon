@@ -6,17 +6,31 @@ interface StockItem {
   id: string;
   warehouseId: string;
   productId: string;
-  quantity: number;
-  reservedQty: number;
-  reorderLevel: number;
-  warehouse?: { id: string; name: string; code: string };
+  quantity?: number;
+  quantityOnHand?: number;
+  reservedQty?: number;
+  quantityReserved?: number;
+  reorderLevel?: number;
+  unitCost?: number;
+  inventoryValue?: number;
+  warehouse?: { id: string; name: string; code: string; location?: string };
+  warehouseName?: string;
+  warehouseCode?: string;
   product?: {
     id: string;
     name: string;
     sku: string;
-    basePrice: number | string;
-    costPrice: number | string;
+    basePrice?: number | string;
+    costPrice?: number | string;
   };
+  productName?: string;
+  sku?: string;
+}
+
+function toSafeNumber(val: any, fallback: number = 0): number {
+  if (val === null || val === undefined || val === '') return fallback;
+  const num = Number(val);
+  return Number.isFinite(num) ? num : fallback;
 }
 
 export default function Inventory() {
@@ -50,8 +64,8 @@ export default function Inventory() {
         }),
         warehousesApi.getAll(),
       ]);
-      setStocks(stocksRes);
-      setWarehouses(whRes);
+      setStocks(Array.isArray(stocksRes) ? stocksRes : []);
+      setWarehouses(Array.isArray(whRes) ? whRes : []);
     } catch {
       toast('Failed to load inventory stock levels', 'error');
     } finally {
@@ -93,20 +107,26 @@ export default function Inventory() {
   const filteredStocks = stocks.filter((s) => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    return (
-      s.product?.name?.toLowerCase().includes(q) ||
-      s.product?.sku?.toLowerCase().includes(q) ||
-      s.warehouse?.name?.toLowerCase().includes(q)
-    );
+    const pName = (s.product?.name || s.productName || '').toLowerCase();
+    const pSku = (s.product?.sku || s.sku || '').toLowerCase();
+    const wName = (s.warehouse?.name || s.warehouseName || '').toLowerCase();
+    return pName.includes(q) || pSku.includes(q) || wName.includes(q);
   });
 
   // Calculate high-level stats
-  const totalOnHand = filteredStocks.reduce((sum, s) => sum + s.quantity, 0);
-  const totalReserved = filteredStocks.reduce((sum, s) => sum + s.reservedQty, 0);
+  const totalOnHand = filteredStocks.reduce((sum, s) => {
+    const qty = toSafeNumber(s.quantity ?? s.quantityOnHand);
+    return sum + qty;
+  }, 0);
+  const totalReserved = filteredStocks.reduce((sum, s) => {
+    const res = toSafeNumber(s.reservedQty ?? s.quantityReserved);
+    return sum + res;
+  }, 0);
   const totalAvailable = Math.max(0, totalOnHand - totalReserved);
   const totalValuation = filteredStocks.reduce((sum, s) => {
-    const cost = Number(s.product?.costPrice || s.product?.basePrice || 0);
-    return sum + s.quantity * cost;
+    const qty = toSafeNumber(s.quantity ?? s.quantityOnHand);
+    const cost = toSafeNumber(s.product?.costPrice ?? s.unitCost ?? s.product?.basePrice);
+    return sum + qty * cost;
   }, 0);
 
   return (
@@ -240,27 +260,34 @@ export default function Inventory() {
               </thead>
               <tbody className="divide-y divide-slate-800/60">
                 {filteredStocks.map((item) => {
-                  const available = Math.max(0, item.quantity - item.reservedQty);
-                  const isLow = item.quantity <= item.reorderLevel;
-                  const unitCost = Number(item.product?.costPrice || 0);
-                  const itemValuation = item.quantity * unitCost;
+                  const qty = toSafeNumber(item.quantity ?? item.quantityOnHand);
+                  const reserved = toSafeNumber(item.reservedQty ?? item.quantityReserved);
+                  const available = Math.max(0, qty - reserved);
+                  const reorder = toSafeNumber(item.reorderLevel);
+                  const isLow = qty <= reorder;
+                  const unitCost = toSafeNumber(item.product?.costPrice ?? item.unitCost ?? item.product?.basePrice);
+                  const itemValuation = toSafeNumber(item.inventoryValue ?? (qty * unitCost));
+                  const productName = item.product?.name || item.productName || 'Unnamed Product';
+                  const productSku = item.product?.sku || item.sku || 'SKU-N/A';
+                  const warehouseName = item.warehouse?.name || item.warehouseName || 'Warehouse';
+                  const warehouseCode = item.warehouse?.code || item.warehouseCode || 'WH';
 
                   return (
                     <tr key={item.id} className="hover:bg-slate-900/50 transition-colors">
                       <td className="px-6 py-4">
-                        <div className="font-semibold text-white">{item.product?.name || 'Unnamed Product'}</div>
-                        <div className="text-xs font-mono text-indigo-400">{item.product?.sku || 'SKU-N/A'}</div>
+                        <div className="font-semibold text-white">{productName}</div>
+                        <div className="text-xs font-mono text-indigo-400">{productSku}</div>
                       </td>
                       <td className="px-6 py-4">
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">
-                          🏢 {item.warehouse?.name} ({item.warehouse?.code})
+                          🏢 {warehouseName} ({warehouseCode})
                         </span>
                       </td>
                       <td className="px-6 py-4 text-center">
-                        <span className="font-mono text-base font-bold text-white">{item.quantity}</span>
+                        <span className="font-mono text-base font-bold text-white">{qty}</span>
                       </td>
                       <td className="px-6 py-4 text-center">
-                        <span className="font-mono text-base font-bold text-amber-400">{item.reservedQty}</span>
+                        <span className="font-mono text-base font-bold text-amber-400">{reserved}</span>
                       </td>
                       <td className="px-6 py-4 text-center">
                         <span
@@ -273,7 +300,7 @@ export default function Inventory() {
                       </td>
                       <td className="px-6 py-4 text-center">
                         <div className="flex items-center justify-center gap-2">
-                          <span className="font-mono text-xs text-slate-400">{item.reorderLevel}</span>
+                          <span className="font-mono text-xs text-slate-400">{reorder}</span>
                           {isLow && (
                             <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 animate-pulse">
                               Low Stock
@@ -321,32 +348,35 @@ export default function Inventory() {
             <form onSubmit={handleAdjustStock} className="mt-4 space-y-4">
               <div>
                 <p className="text-xs text-slate-400">Product</p>
-                <p className="font-semibold text-white">{selectedStock.product?.name}</p>
-                <p className="text-xs text-indigo-400 font-mono">{selectedStock.product?.sku}</p>
+                <p className="font-semibold text-white">{selectedStock.product?.name || selectedStock.productName}</p>
+                <p className="text-xs text-indigo-400 font-mono">{selectedStock.product?.sku || selectedStock.sku}</p>
               </div>
 
               <div>
                 <p className="text-xs text-slate-400">Warehouse</p>
                 <p className="text-sm font-medium text-slate-200">
-                  {selectedStock.warehouse?.name} ({selectedStock.warehouse?.code})
+                  {selectedStock.warehouse?.name || selectedStock.warehouseName} ({selectedStock.warehouse?.code || selectedStock.warehouseCode})
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4 p-3 rounded-xl bg-slate-950 border border-slate-800">
                 <div>
                   <p className="text-xs text-slate-500">Current On-Hand</p>
-                  <p className="text-lg font-bold text-white">{selectedStock.quantity}</p>
+                  <p className="text-lg font-bold text-white">
+                    {toSafeNumber(selectedStock.quantity ?? selectedStock.quantityOnHand)}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">Projected On-Hand</p>
                   <p
                     className={`text-lg font-bold ${
-                      selectedStock.quantity + Number(adjustmentAmount) < selectedStock.reservedQty
+                      toSafeNumber(selectedStock.quantity ?? selectedStock.quantityOnHand) + Number(adjustmentAmount) <
+                      toSafeNumber(selectedStock.reservedQty ?? selectedStock.quantityReserved)
                         ? 'text-rose-400'
                         : 'text-emerald-400'
                     }`}
                   >
-                    {selectedStock.quantity + Number(adjustmentAmount)}
+                    {toSafeNumber(selectedStock.quantity ?? selectedStock.quantityOnHand) + Number(adjustmentAmount)}
                   </p>
                 </div>
               </div>

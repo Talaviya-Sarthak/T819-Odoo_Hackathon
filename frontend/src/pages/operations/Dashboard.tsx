@@ -260,7 +260,7 @@ export default function OperationsDashboard() {
               <span className="text-xs text-muted-foreground ml-2">of {kpis?.totalQuantityOnHand ?? 0} on-hand</span>
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Valuation: ${kpis?.totalInventoryValue?.toLocaleString() ?? 0}
+              Valuation: ${(kpis?.totalInventoryValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           </div>
 

@@ -113,39 +113,54 @@ export async function listByUser(
   userId: string,
   options: ListOptions = {},
 ): Promise<Dataset[]> {
-  const limit = Math.min(Math.max(options.limit ?? 50, 1), 100);
-  const offset = Math.max(options.offset ?? 0, 0);
+  try {
+    const limit = Math.min(Math.max(options.limit ?? 50, 1), 100);
+    const offset = Math.max(options.offset ?? 0, 0);
 
-  const result = await pool.query<DatasetRow>(
-    `${selectColumns}
-     WHERE user_id = $1
-     ORDER BY created_at DESC
-     LIMIT $2 OFFSET $3`,
-    [userId, limit, offset],
-  );
-  return result.rows.map(mapRow);
+    const result = await pool.query<DatasetRow>(
+      `${selectColumns}
+       WHERE user_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [userId, limit, offset],
+    );
+    return result.rows.map(mapRow);
+  } catch (err: any) {
+    if (err?.code === '42P01') return [];
+    throw err;
+  }
 }
 
 export async function findRecentByUser(
   userId: string,
   limit = 5,
 ): Promise<Dataset[]> {
-  const result = await pool.query<DatasetRow>(
-    `${selectColumns}
-     WHERE user_id = $1
-     ORDER BY created_at DESC
-     LIMIT $2`,
-    [userId, Math.min(Math.max(limit, 1), 20)],
-  );
-  return result.rows.map(mapRow);
+  try {
+    const result = await pool.query<DatasetRow>(
+      `${selectColumns}
+       WHERE user_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [userId, Math.min(Math.max(limit, 1), 20)],
+    );
+    return result.rows.map(mapRow);
+  } catch (err: any) {
+    if (err?.code === '42P01') return [];
+    throw err;
+  }
 }
 
 export async function countByUser(userId: string): Promise<number> {
-  const result = await pool.query<{ total: number }>(
-    `SELECT count(*)::int AS total FROM datasets WHERE user_id = $1`,
-    [userId],
-  );
-  return result.rows[0]?.total ?? 0;
+  try {
+    const result = await pool.query<{ total: number }>(
+      `SELECT count(*)::int AS total FROM datasets WHERE user_id = $1`,
+      [userId],
+    );
+    return result.rows[0]?.total ?? 0;
+  } catch (err: any) {
+    if (err?.code === '42P01') return 0;
+    throw err;
+  }
 }
 
 export async function countByUserAndStatus(

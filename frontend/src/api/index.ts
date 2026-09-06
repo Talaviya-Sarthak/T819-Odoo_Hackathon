@@ -336,7 +336,7 @@ export const inventoryApi = {
 
   getByWarehouse: async (warehouseId: string) => {
     const res = await apiGet<any>(`/api/inventory/warehouse/${warehouseId}`);
-    return res.stocks || res.data || [];
+    return res.stocks || res.inventory || res.data || [];
   },
 
   adjust: async (id: string, data: { adjustment: number; reason?: string }) => {

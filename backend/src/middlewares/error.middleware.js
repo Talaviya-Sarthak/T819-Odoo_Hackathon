@@ -10,9 +10,17 @@ exports.errorHandler = (err, req, res, next) => {
     });
   }
 
+  if (err && (err.name === 'ApiError' || (err.statusCode && err.statusCode < 500))) {
+    return res.status(err.statusCode || 400).json({
+      error: err.message,
+      code: err.code,
+      suggestion: err.suggestion,
+    });
+  }
+
   logger.error({ err }, 'Unhandled error');
 
-  res.status(500).json({
-    error: 'Internal server error'
+  res.status(err?.statusCode || 500).json({
+    error: err?.message || 'Internal server error'
   });
 };
