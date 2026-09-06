@@ -17,12 +17,15 @@ interface FulfillmentLine {
 
 interface FulfillmentRecord {
   id: string;
+  orderNumber?: string;
   fulfillmentNumber?: string;
   salesOrderId: string;
   warehouseId: string;
-  status: 'PENDING' | 'ALLOCATED' | 'PARTIALLY_FULFILLED' | 'FULFILLED' | 'CANCELLED';
+  status: 'PENDING' | 'ALLOCATED' | 'PARTIALLY_FULFILLED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
+  notes?: string;
   trackingNumber?: string;
   shippedAt?: string;
+  fulfilledAt?: string;
   createdAt: string;
   warehouse?: { id: string; name: string; code: string };
   salesOrder?: {
@@ -32,11 +35,13 @@ interface FulfillmentRecord {
     lines?: Array<{
       id: string;
       quantity: number;
+      quantityFulfilled?: number;
       fulfilledQuantity?: number;
       product?: { name: string; sku: string; isService?: boolean };
     }>;
   };
   lines?: FulfillmentLine[];
+  backorders?: Array<{ id: string; quantity: number; status: string }>;
 }
 
 export default function Fulfillment() {
@@ -68,10 +73,14 @@ export default function Fulfillment() {
 
   useEffect(() => {
     const orderIdParam = searchParams.get('orderId');
-    if (orderIdParam && pendingOrders.length > 0) {
+    if (orderIdParam) {
       const matched = pendingOrders.find((o) => o.id === orderIdParam);
       if (matched) {
         handleOpenCreateForOrder(matched);
+      } else {
+        ordersApi.getById(orderIdParam).then((ord) => {
+          if (ord) handleOpenCreateForOrder(ord);
+        }).catch(() => {});
       }
     }
   }, [searchParams, pendingOrders]);
@@ -82,11 +91,38 @@ export default function Fulfillment() {
       const [fList, whList, oList] = await Promise.all([
         fulfillmentApi.getAll({ status: statusFilter || undefined }),
         warehousesApi.getAll(),
-        ordersApi.getAll({ status: 'ORDER_CONFIRMED' }),
+        ordersApi.getAll(),
       ]);
-      setFulfillments(fList);
-      setWarehouses(whList);
-      setPendingOrders(oList);
+
+      const fulfillmentRecords = Array.isArray(fList)
+        ? fList
+        : Array.isArray((fList as any)?.fulfillments)
+        ? (fList as any).fulfillments
+        : [];
+      setFulfillments(fulfillmentRecords);
+      setWarehouses(Array.isArray(whList) ? whList : []);
+
+      const ordersList = Array.isArray(oList)
+        ? oList
+        : Array.isArray((oList as any)?.orders)
+        ? (oList as any).orders
+        : Array.isArray((oList as any)?.salesOrders)
+        ? (oList as any).salesOrders
+        : [];
+
+      // Filter to all orders that have remaining physical items to dispatch
+      const unfulfilled = ordersList.filter((o: any) => {
+        if (o.status === 'FULFILLED' || o.status === 'CANCELLED') return false;
+        const lines = o.lines || [];
+        if (lines.length === 0) return true;
+        return lines.some((l: any) => {
+          const isService = l.product?.unit === 'service' || l.product?.unit === 'contract' || l.product?.name?.toLowerCase().includes('service');
+          if (isService) return false;
+          const fulfilled = l.quantityFulfilled ?? l.fulfilledQuantity ?? 0;
+          return l.quantity > fulfilled;
+        });
+      });
+      setPendingOrders(unfulfilled);
 
       if (whList.length > 0 && !selectedWarehouseId) {
         setSelectedWarehouseId(whList[0].id);
@@ -103,7 +139,7 @@ export default function Fulfillment() {
     const initialAlloc: { [lineId: string]: number } = {};
     if (order.lines) {
       for (const line of order.lines) {
-        const remaining = line.quantity - (line.fulfilledQuantity || 0);
+        const remaining = line.quantity - (line.quantityFulfilled ?? line.fulfilledQuantity ?? 0);
         initialAlloc[line.id] = remaining > 0 ? remaining : 0;
       }
     }
@@ -248,8 +284,9 @@ export default function Fulfillment() {
           >
             <option value="">All Fulfillment Statuses</option>
             <option value="PENDING">Pending (Reserved)</option>
-            <option value="PARTIALLY_FULFILLED">Partially Fulfilled</option>
-            <option value="FULFILLED">Fulfilled / Shipped</option>
+            <option value="PROCESSING">Processing</option>
+            <option value="SHIPPED">Shipped</option>
+            <option value="DELIVERED">Delivered / Dispatched</option>
           </select>
         </div>
 
@@ -290,16 +327,26 @@ export default function Fulfillment() {
               </thead>
               <tbody className="divide-y divide-slate-800/60">
                 {fulfillments.map((f) => {
-                  const isShipped = f.status === 'FULFILLED' || !!f.shippedAt;
+                  const orderNum = f.orderNumber || f.fulfillmentNumber || `FO-${f.id.slice(0, 8)}`;
+                  const isShipped = f.status === 'DELIVERED' || f.status === 'SHIPPED' || f.status === 'FULFILLED' || !!f.fulfilledAt || !!f.shippedAt;
+                  const tracking = f.trackingNumber || (f.notes?.includes('tracking') ? f.notes.split('tracking')[1]?.trim() : (f.notes || ''));
+                  const shipDate = f.fulfilledAt || f.shippedAt;
+                  const allocatedQty = f.lines?.reduce((sum, l) => sum + (l.quantityToFulfill || (l as any).quantity || 0), 0) || 0;
 
                   return (
                     <tr key={f.id} className="hover:bg-slate-900/50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="font-mono font-bold text-white">
-                          {f.fulfillmentNumber || `FO-${f.id.slice(0, 8)}`}
+                          {orderNum}
                         </div>
                         <div className="text-xs text-indigo-400 font-mono">
                           {f.salesOrder?.orderNumber || 'SO-N/A'}
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          {allocatedQty} unit(s) allocated
+                          {f.backorders && f.backorders.length > 0 && (
+                            <span className="ml-1.5 text-amber-400 font-medium">({f.backorders.length} backordered)</span>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -316,7 +363,7 @@ export default function Fulfillment() {
                           className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
                             isShipped
                               ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                              : f.status === 'PARTIALLY_FULFILLED'
+                              : f.status === 'PROCESSING'
                               ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
                               : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
                           }`}
@@ -325,23 +372,28 @@ export default function Fulfillment() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        {f.trackingNumber ? (
-                          <span className="font-mono text-xs font-bold text-cyan-400">{f.trackingNumber}</span>
+                        {tracking ? (
+                          <span className="font-mono text-xs font-bold text-cyan-400">{tracking}</span>
                         ) : (
                           <span className="text-xs text-slate-500">Not Dispatched</span>
                         )}
                       </td>
                       <td className="px-6 py-4 text-xs text-slate-400">
-                        {f.shippedAt ? new Date(f.shippedAt).toLocaleString() : '—'}
+                        {shipDate ? new Date(shipDate).toLocaleString() : '—'}
                       </td>
                       <td className="px-6 py-4 text-right">
                         {!isShipped && (
                           <button
                             onClick={() => openShipModal(f.id)}
-                            className="px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 shadow-md shadow-emerald-600/30 transition-all"
+                            className="px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 shadow-md shadow-emerald-600/30 transition-all cursor-pointer"
                           >
                             🚀 Ship Order
                           </button>
+                        )}
+                        {isShipped && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            ✓ Dispatched
+                          </span>
                         )}
                       </td>
                     </tr>
@@ -398,7 +450,7 @@ export default function Fulfillment() {
                 </label>
                 <div className="space-y-3">
                   {selectedOrderObj.lines?.map((line: any) => {
-                    const remaining = line.quantity - (line.fulfilledQuantity || 0);
+                    const remaining = line.quantity - (line.quantityFulfilled ?? line.fulfilledQuantity ?? 0);
                     const currentAlloc = lineAllocations[line.id] ?? remaining;
 
                     return (

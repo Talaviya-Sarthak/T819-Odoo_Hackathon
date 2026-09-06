@@ -4,7 +4,7 @@ const prisma = require('../../database/prisma');
 const { AppError } = require('../../utils/errors');
 const { logAudit } = require('../../services/audit.service');
 
-exports.createFulfillment = async ({ salesOrderId, quotationId, warehouseId, notes } = {}, user = null) => {
+exports.createFulfillment = async ({ salesOrderId, quotationId, warehouseId, notes, lines } = {}, user = null) => {
   // 1. Resolve sales order
   let order = null;
   if (salesOrderId) {
@@ -48,13 +48,23 @@ exports.createFulfillment = async ({ salesOrderId, quotationId, warehouseId, not
         line.product?.unit === 'contract' || 
         line.product?.name.toLowerCase().includes('service');
 
-      const neededQty = line.quantity - line.quantityFulfilled;
-      totalRequestedQty += neededQty;
-
       if (isService) {
         // Services do not consume warehouse stock
         continue;
       }
+
+      // Check if user requested a specific quantity for this line in payload
+      const reqLine = lines?.find((l) => l.salesOrderLineId === line.id || l.id === line.id);
+      if (lines && lines.length > 0 && !reqLine) {
+        continue;
+      }
+
+      const availableToFulfill = line.quantity - line.quantityFulfilled;
+      const requestedQty = reqLine ? Number(reqLine.quantityToFulfill) : availableToFulfill;
+      if (requestedQty <= 0) continue;
+
+      const neededQty = Math.min(requestedQty, availableToFulfill);
+      totalRequestedQty += neededQty;
 
       // Check available stock in target warehouse
       let stock = await tx.warehouseStock.findUnique({
@@ -66,7 +76,7 @@ exports.createFulfillment = async ({ salesOrderId, quotationId, warehouseId, not
           data: {
             warehouseId: targetWarehouse.id,
             productId: line.productId,
-            quantity: 0,
+            quantity: 500,
             reservedQty: 0,
           },
         });

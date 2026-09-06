@@ -53,7 +53,12 @@ exports.list = async ({ user, status, customerId, salesRepId, limit = 50, offset
   if (customerId && (!user || user.role !== 'CUSTOMER')) {
     where.customerId = customerId;
   }
-  if (status) where.status = status;
+  if (status === 'CUSTOMER_CONFIRMED') {
+    where.status = status;
+    where.salesOrder = null;
+  } else if (status) {
+    where.status = status;
+  }
 
   const cacheKey = generateKey(
     'quotation:list',

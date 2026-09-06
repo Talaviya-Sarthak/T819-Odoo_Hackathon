@@ -44,6 +44,7 @@ export default function OperationsOrders() {
   // Order Details Modal state
   const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [convertingQuoteId, setConvertingQuoteId] = useState<string | null>(null);
   const [generatingInvoice, setGeneratingInvoice] = useState(false);
 
@@ -86,7 +87,8 @@ export default function OperationsOrders() {
         : Array.isArray((quotes as any)?.data)
         ? (quotes as any).data
         : [];
-      setConfirmedQuotes(list);
+      const unconverted = list.filter((q: any) => !q.salesOrder && !q.salesOrderId);
+      setConfirmedQuotes(unconverted);
     } catch {
       setConfirmedQuotes([]);
     }
@@ -98,6 +100,8 @@ export default function OperationsOrders() {
       const order = await ordersApi.createFromQuotation(quoteId);
       const orderNum = order?.orderNumber || order?.order_number || (order as any)?.order?.orderNumber || 'SO';
       toast(`Sales Order ${orderNum} successfully generated!`, 'success');
+      setConfirmedQuotes((prev) => prev.filter((q) => q.id !== quoteId));
+      setCreateModalOpen(false);
       await loadOrders();
       await loadConfirmedQuotes();
     } catch (err: any) {
@@ -162,6 +166,12 @@ export default function OperationsOrders() {
             Authoritative sales orders with line pricing preservation, fulfillment dispatch, and direct invoice generation.
           </p>
         </div>
+        <button
+          onClick={() => setCreateModalOpen(true)}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 transition-all hover:scale-[1.02] active:scale-[0.98] self-start sm:self-auto cursor-pointer"
+        >
+          <span>⚡</span> Create Sales Order
+        </button>
       </div>
 
       {/* Confirmed Quotations Ready for Conversion Banner */}
@@ -454,6 +464,92 @@ export default function OperationsOrders() {
                   🚚 Allocate & Fulfill
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Sales Order Modal */}
+      {createModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl text-slate-200">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <div>
+                <span className="text-xs font-semibold uppercase text-indigo-400">Direct Order Generation</span>
+                <h2 className="text-xl font-black text-white">Create Sales Order from Quotation</h2>
+              </div>
+              <button
+                onClick={() => setCreateModalOpen(false)}
+                className="text-slate-400 hover:text-white text-xl font-bold p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-4">
+              {confirmedQuotes.length === 0 ? (
+                <div className="py-12 text-center">
+                  <span className="text-4xl">📄</span>
+                  <p className="mt-3 text-base font-semibold text-white">No Pending Confirmed Quotations</p>
+                  <p className="mt-1 text-sm text-slate-400 max-w-md mx-auto">
+                    All currently confirmed quotations have already been converted into active sales orders. To create a new order, confirm a quotation in the Quotations portal.
+                  </p>
+                  <div className="mt-5 flex justify-center gap-3">
+                    <button
+                      onClick={() => navigate('/sales/quotations')}
+                      className="px-4 py-2 text-xs font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-500 shadow-md transition-all"
+                    >
+                      View Quotations Portal
+                    </button>
+                    <button
+                      onClick={() => setCreateModalOpen(false)}
+                      className="px-4 py-2 text-xs font-medium rounded-xl text-slate-300 bg-slate-800 hover:bg-slate-700 transition-all"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs text-slate-400 mb-2">
+                    Select any customer-confirmed quotation below to immediately generate an official Sales Order:
+                  </p>
+                  <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
+                    {confirmedQuotes.map((q) => (
+                      <div
+                        key={q.id}
+                        className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 hover:border-indigo-500/50 transition-all flex items-center justify-between gap-4"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-white text-sm">
+                              {q.quotationNumber || q.quotation_number || q.id?.slice(0, 8)}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                              CUSTOMER CONFIRMED
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-300 font-medium mt-1">
+                            {q.customer?.name || q.customer_name || 'Customer'}
+                            {q.customer?.company ? ` • ${q.customer.company}` : ''}
+                          </div>
+                          <div className="font-mono font-extrabold text-emerald-400 mt-1 text-sm">
+                            ${Number(q.grandTotal || q.grand_total || q.totalAmount || q.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </div>
+                        </div>
+
+                        <button
+                          disabled={convertingQuoteId === q.id}
+                          onClick={() => handleConvertQuote(q.id)}
+                          className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 shadow-md shadow-indigo-600/30 transition-all disabled:opacity-50 whitespace-nowrap cursor-pointer"
+                        >
+                          {convertingQuoteId === q.id ? 'Creating...' : '⚡ Generate Order'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

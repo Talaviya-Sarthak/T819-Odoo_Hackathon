@@ -3,6 +3,7 @@
 const prisma = require('../../database/prisma');
 const { AppError } = require('../../utils/errors');
 const { logAudit } = require('../../services/audit.service');
+const { cache } = require('../../cache');
 
 exports.createFromQuotation = async (quotationId, user = null) => {
   if (!quotationId) {
@@ -37,6 +38,13 @@ exports.createFromQuotation = async (quotationId, user = null) => {
   });
 
   if (existingOrder) {
+    if (quotation.status !== 'ORDER_CONFIRMED') {
+      await prisma.quotation.update({
+        where: { id: quotationId },
+        data: { status: 'ORDER_CONFIRMED' },
+      }).catch(() => {});
+      cache.clear();
+    }
     return existingOrder;
   }
 
@@ -207,7 +215,7 @@ exports.createFromQuotation = async (quotationId, user = null) => {
   });
 
   // Return complete populated sales order
-  return prisma.salesOrder.findUnique({
+  const populated = await prisma.salesOrder.findUnique({
     where: { id: salesOrder.id },
     include: {
       lines: { include: { product: true } },
@@ -219,6 +227,9 @@ exports.createFromQuotation = async (quotationId, user = null) => {
       backorders: true,
     },
   });
+
+  cache.clear();
+  return populated;
 };
 
 exports.list = async ({ user = null, status, customerId, limit = 50, offset = 0 } = {}) => {
